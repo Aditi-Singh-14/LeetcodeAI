@@ -25,6 +25,7 @@ class Problem(BaseModel):
     code: str
     author: str = "Anonymous Developer"
     client_time: str = None  # Optional client time string
+    custom_prompt : str = None #custom_prompt for the user
 
 
 @app.get("/")
@@ -39,6 +40,12 @@ def create_blog(problem: Problem):
     1. Generates a well-structured blog post using Gemini AI.
     2. Publishes the post directly to Dev.to.
     """
+    if problem.custom_prompt and len(problem.custom_prompt.strip()) > 1000:
+        raise HTTPException(
+            status_code=400,
+            detail="Custom prompt exceeds maximum length of 1000 characters."
+        )
+
     if not problem.code or problem.code.strip() == "":
         return {"status": "error", "message": "Code is empty, cannot generate blog."}
 
