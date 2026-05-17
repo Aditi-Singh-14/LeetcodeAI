@@ -3,7 +3,7 @@ import os
 import motor.motor_asyncio
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from twilio.rest import Client
@@ -54,7 +54,8 @@ class Problem(BaseModel):
     description: str
     code: str
     author: str = "Anonymous Developer"
-    client_time: str | None = None
+    client_time: str = None  # Optional client time string
+    custom_prompt : str = None #custom_prompt for the user
     platforms: list[str] | None = None
     publish_as_draft: bool = False
     tags: list[str] | None = None
@@ -104,6 +105,11 @@ def create_blog(problem: Problem):
     1. Generates a blog using Gemini AI
     2. Publishes it to one or more configured platforms
     """
+    if problem.custom_prompt and len(problem.custom_prompt.strip()) > 1000:
+        raise HTTPException(
+            status_code=400,
+            detail="Custom prompt exceeds maximum length of 1000 characters."
+        )
 
     if not problem.code or problem.code.strip() == "":
         return {

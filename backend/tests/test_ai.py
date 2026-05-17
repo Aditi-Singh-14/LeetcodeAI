@@ -57,5 +57,5 @@ class TestGenerateBlog:
         )
         generate_blog(problem)
         call_args = mock_gemini_client["model"].generate_content.call_args
-        prompt_text = call_args[0][0]
+        prompt_text = call_args[1].get("contents") or call_args[0][0]
         assert "Unique Problem Title XYZ" in prompt_text

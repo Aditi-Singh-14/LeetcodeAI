@@ -124,16 +124,24 @@ def mock_db(app_module):
 @pytest.fixture
 def mock_gemini_client(mocker):
     ai_module = importlib.import_module("ai")
-    mocker.patch.object(ai_module.genai, "configure")
-    model = Mock(name="gemini_model")
-    model.generate_content.return_value = SimpleNamespace(text="# Mock blog content")
-    model_factory = mocker.patch.object(
+    
+    response = Mock(name="gemini_response")
+    response.text = "# Mock blog content"
+    
+    mock_client = Mock(name="gemini_client")
+    mock_client.models.generate_content.return_value = response
+    
+    client_factory = mocker.patch.object(
         ai_module.genai,
-        "GenerativeModel",
-        autospec=True,
-        return_value=model,
+        "Client",
+        autospec=False,
+        return_value=mock_client,
     )
-    return {"model_factory": model_factory, "model": model}
+    return {
+        "client_factory": client_factory,
+        "client": mock_client,
+        "model": mock_client.models,
+    }
 
 
 @pytest.fixture

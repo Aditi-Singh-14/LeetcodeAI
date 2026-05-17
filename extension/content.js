@@ -5,13 +5,14 @@
     console.log("LeetLog AI: Tracking successful submissions...");
 
     let isProcessing = false;
+    let hasGeneratedForAccepted = false;
     // Auto-trigger debounce and dedupe helpers
     let autoTriggerTimer = null;
     const AUTO_TRIGGER_DEBOUNCE_MS = 800; // wait for DOM to settle
     const AUTO_TRIGGER_MIN_INTERVAL_MS = 60 * 1000; // 1 minute between auto-triggers for same submission
 
     // Function to handle data extraction and blog generation
-    const triggerBlogGeneration = async () => {
+    const triggerBlogGeneration = async (custom_prompt = "") => {
         if (isProcessing) return;
         isProcessing = true;
 
@@ -71,7 +72,7 @@
             // Send to background script
             chrome.runtime.sendMessage({
                 type: 'GENERATE_BLOG',
-                payload: { title, description, code, author, client_time }
+                payload: { title, description, code, author, client_time, custom_prompt } // add custom_prompt
             });
 
             setTimeout(() => { isProcessing = false; }, 5000);
@@ -121,7 +122,7 @@
     // Start of Listener for manual triggers from popup
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.type === 'MANUAL_TRIGGER') {
-            triggerBlogGeneration();
+            triggerBlogGeneration(request.custom_prompt || ""); //usage of custom prompt
         }
     });
 
@@ -129,8 +130,13 @@
     const observer = new MutationObserver(async (mutations) => {
         const resultElement = document.querySelector('[data-e2e-locator="submission-result"]');
         if (resultElement && resultElement.innerText.trim() === 'Accepted') {
-            triggerBlogGeneration();
-        }
+
+            if (!hasGeneratedForAccepted) {
+                hasGeneratedForAccepted = true;
+                triggerBlogGeneration();
+            }
+
+        } 
     });
 
     observer.observe(document.body, {
