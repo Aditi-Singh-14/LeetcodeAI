@@ -1,19 +1,17 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.concurrency import run_in_threadpool
-from ai import generate_blog
-from devto import publish_to_platforms
-import uvicorn
-from dotenv import load_dotenv
 import os
 
-from alerts.scheduler import scheduler
-from services.reminder_scheduler import start_scheduler
-
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from twilio.rest import Client
 import motor.motor_asyncio
+import uvicorn
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
+from twilio.rest import Client
+
+from ai import generate_blog
+from devto import publish_to_platforms
+from services.reminder_scheduler import start_scheduler
 
 load_dotenv()
 

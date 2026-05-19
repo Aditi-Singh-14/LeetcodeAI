@@ -267,3 +267,56 @@ Found something broken? Please [open an issue](https://github.com/vanshaggarwal2
 ---
 
 Thank you for being part of LeetLog AI! Every contribution — big or small — matters. 🚀
+---
+
+## Running Tests Locally
+
+### Prerequisites
+- Python 3.10+
+- All dependencies installed
+
+### Setup
+
+cd backend
+pip install -r requirements.txt
+
+### Run the full test suite
+
+make test
+
+Or directly:
+
+cd backend && pytest -v
+
+### Run the linter
+
+make lint
+
+### Run the formatter
+
+make format
+
+### Writing New Tests
+
+Tests live in backend/tests/. Each file maps to a module:
+
+- test_routes.py   API route integration tests
+- test_ai.py       blog generation service tests  
+- test_devto.py    Dev.to publishing service tests
+
+When adding a new external API integration, add a 
+mock fixture for it in backend/tests/conftest.py 
+before writing tests. Never make real API calls 
+in tests.
+
+### Mock Fixtures Available
+
+| Fixture | What it mocks |
+|---|---|
+| mock_generate_blog | generate_blog() return value |
+| mock_post_to_platform | post_to_platform() return value |
+| mock_gemini_client | Gemini genai model directly |
+| mock_devto_request | requests.post to Dev.to |
+| mock_db | async MongoDB collection |
+
+All fixtures are in backend/tests/conftest.py.

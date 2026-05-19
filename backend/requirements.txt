@@ -5,7 +5,16 @@ google-generativeai
 httpx
 python-dotenv
 twilio
+elevenlabs
 apscheduler
 motor
 pytz
 pymongo
+
+# --- Test & Dev Dependencies ---
+pytest
+pytest-asyncio
+pytest-mock
+responses
+ruff
+

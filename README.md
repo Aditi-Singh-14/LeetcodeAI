@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![GSSoC](https://img.shields.io/badge/GSSoC-2025-orange)](https://gssoc.girlscript.tech/)
+[![GSSoC](https://img.shields.io/badge/GSSoC-2026-orange)](https://gssoc.girlscript.tech/)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688.svg)](https://fastapi.tiangolo.com/)
 
@@ -196,7 +196,7 @@ The backend can be deployed for free on [Render](https://render.com/).
 
 ## 🤝 Contributing
 
-We ❤️ contributions! LeetLog AI is part of **GSSoC 2025** and welcomes developers of all experience levels.
+We ❤️ contributions! LeetLog AI is part of **GSSoC 2026** and welcomes developers of all experience levels.
 
 Please read our **[CONTRIBUTING.md](CONTRIBUTING.md)** for:
 - How to set up your development environment
