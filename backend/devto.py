@@ -40,7 +40,7 @@ class PublisherError(Exception):
 class BasePublisher:
     platform = "base"
 
-    def publish(
+    async def publish(
         self, title: str, content: str, *, tags: list[str], published: bool
     ) -> PublishResult:
         raise NotImplementedError
@@ -78,7 +78,7 @@ class BasePublisher:
 class DevToPublisher(BasePublisher):
     platform = "devto"
 
-    def publish(
+    async def publish(
         self, title: str, content: str, *, tags: list[str], published: bool
     ) -> PublishResult:
         api_key = os.getenv("DEVTO_API_KEY")
@@ -114,7 +114,7 @@ class DevToPublisher(BasePublisher):
 class HashnodePublisher(BasePublisher):
     platform = "hashnode"
 
-    def publish(
+    async def publish(
         self, title: str, content: str, *, tags: list[str], published: bool
     ) -> PublishResult:
         token = os.getenv("HASHNODE_TOKEN")
@@ -167,7 +167,7 @@ class HashnodePublisher(BasePublisher):
 class MediumPublisher(BasePublisher):
     platform = "medium"
 
-    def publish(
+    async def publish(
         self, title: str, content: str, *, tags: list[str], published: bool
     ) -> PublishResult:
         token = os.getenv("MEDIUM_TOKEN")
@@ -205,7 +205,7 @@ class MediumPublisher(BasePublisher):
 class WebhookPublisher(BasePublisher):
     platform = "webhook"
 
-    def publish(
+    async def publish(
         self, title: str, content: str, *, tags: list[str], published: bool
     ) -> PublishResult:
         webhook_url = os.getenv("BLOG_WEBHOOK_URL")

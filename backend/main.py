@@ -47,8 +47,8 @@ class Problem(BaseModel):
     description: str
     code: str
     author: str = "Anonymous Developer"
-    client_time: str = None  # Optional client time string
-    custom_prompt: str = None  # custom_prompt for the user
+    client_time: str | None = None
+    custom_prompt: str | None = None
     platforms: list[str] | None = None
     publish_as_draft: bool = False
     tags: list[str] | None = None
@@ -173,6 +173,4 @@ async def unsubscribe(data: dict):
 # Run Server
 # -----------------------------
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=10000, reload=True)
-
     uvicorn.run("main:app", host="0.0.0.0", port=10000, reload=True)
