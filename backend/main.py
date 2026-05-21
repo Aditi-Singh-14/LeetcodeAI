@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timedelta, timezone
 
 import motor.motor_asyncio
 import uvicorn
@@ -7,19 +8,15 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from twilio.rest import Client
-from datetime import datetime, timezone, timedelta
 
 from ai import generate_blog
 from devto import publish_to_platforms
-from services.reminder_scheduler import start_scheduler
 from models.reminder import PublishRecord
+from services.reminder_scheduler import start_scheduler
 
 load_dotenv()
 
-app = FastAPI(
-    title="LeetLog AI",
-    version="1.0.0"
-)
+app = FastAPI(title="LeetLog AI", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,17 +30,12 @@ app.add_middleware(
 # -----------------------------
 # Twilio Setup
 # -----------------------------
-twilio_client = Client(
-    os.getenv("TWILIO_ACCOUNT_SID"),
-    os.getenv("TWILIO_AUTH_TOKEN")
-)
+twilio_client = Client(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
 
 # -----------------------------
 # MongoDB Setup
 # -----------------------------
-mongo_client = motor.motor_asyncio.AsyncIOMotorClient(
-    os.getenv("MONGODB_URI")
-)
+mongo_client = motor.motor_asyncio.AsyncIOMotorClient(os.getenv("MONGODB_URI"))
 
 db = mongo_client.leetcodeai
 
@@ -57,7 +49,7 @@ class Problem(BaseModel):
     code: str
     author: str = "Anonymous Developer"
     client_time: str = None  # Optional client time string
-    custom_prompt : str = None #custom_prompt for the user
+    custom_prompt: str = None  # custom_prompt for the user
     platforms: list[str] | None = None
     publish_as_draft: bool = False
     tags: list[str] | None = None
@@ -91,10 +83,7 @@ async def startup_event():
 # -----------------------------
 @app.get("/")
 def health_check():
-    return {
-        "status": "ok",
-        "message": "LeetLog AI backend is running."
-    }
+    return {"status": "ok", "message": "LeetLog AI backend is running."}
 
 
 # -----------------------------
@@ -110,23 +99,17 @@ async def create_blog(problem: Problem):
     if problem.custom_prompt and len(problem.custom_prompt.strip()) > 1000:
         raise HTTPException(
             status_code=400,
-            detail="Custom prompt exceeds maximum length of 1000 characters."
+            detail="Custom prompt exceeds maximum length of 1000 characters.",
         )
 
     if not problem.code or problem.code.strip() == "":
-        return {
-            "status": "error",
-            "message": "Code is empty, cannot generate blog."
-        }
+        return {"status": "error", "message": "Code is empty, cannot generate blog."}
 
     try:
         blog_content = generate_blog(problem)
 
     except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Gemini API failure: {str(e)}"
-        }
+        return {"status": "error", "message": f"Gemini API failure: {str(e)}"}
 
     try:
         platform_results = publish_to_platforms(
@@ -138,11 +121,13 @@ async def create_blog(problem: Problem):
         )
         successful = [r for r in platform_results if r.get("status") == "success"]
         overall_status = (
-            "success" if len(successful) == len(platform_results)
-            else "partial_success" if successful
+            "success"
+            if len(successful) == len(platform_results)
+            else "partial_success"
+            if successful
             else "error"
         )
- 
+
         record = PublishRecord(
             title=problem.title,
             date=datetime.now(timezone.utc).isoformat(),
@@ -151,72 +136,82 @@ async def create_blog(problem: Problem):
             author=problem.author,
         )
         await db.problem_info.update_one(record.model_dump(), upsert=True)
- 
+
         return {
             "status": overall_status,
             "data": {"blog_content": blog_content, "platforms": platform_results},
         }
 
     except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Publishing failure: {str(e)}"
-        }
+        return {"status": "error", "message": f"Publishing failure: {str(e)}"}
 
-#dashboard endpoints
+
+# dashboard endpoints
 @app.get("/dashboard/stats")
 async def get_dashboard_stats():
     total = await db.problem_info.count_documents({})
- 
+
     pipeline_platforms = [
         {"$unwind": "$platforms"},
         {"$group": {"_id": "$platforms", "count": {"$sum": 1}}},
     ]
     platform_cursor = db.problem_info.aggregate(pipeline_platforms)
     platform_counts = {doc["_id"]: doc["count"] async for doc in platform_cursor}
- 
+
     seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     pipeline_week = [
         {"$match": {"date": {"$gte": seven_days_ago}}},
-        {"$group": {
-            "_id": {"$substr": ["$date", 0, 10]},  
-            "count": {"$sum": 1},
-        }},
+        {
+            "$group": {
+                "_id": {"$substr": ["$date", 0, 10]},
+                "count": {"$sum": 1},
+            }
+        },
         {"$sort": {"_id": 1}},
     ]
     week_cursor = db.problem_info.aggregate(pipeline_week)
     week_activity = {doc["_id"]: doc["count"] async for doc in week_cursor}
- 
-    recent_cursor = db.problem_info.find(
-        {}, {"_id": 0, "title": 1, "date": 1, "platforms": 1, "status": 1, "author": 1}
-    ).sort("date", -1).limit(10)
+
+    recent_cursor = (
+        db.problem_info.find(
+            {},
+            {"_id": 0, "title": 1, "date": 1, "platforms": 1, "status": 1, "author": 1},
+        )
+        .sort("date", -1)
+        .limit(10)
+    )
     recent = [doc async for doc in recent_cursor]
- 
+
     return {
         "total_posts": total,
         "platform_counts": platform_counts,
         "week_activity": week_activity,
         "recent": recent,
     }
- 
- 
+
+
 @app.get("/dashboard/history")
 async def get_dashboard_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
     skip = (page - 1) * page_size
-    cursor = db.problem_info.find(
-        {}, {"_id": 0}
-    ).sort("date", -1).skip(skip).limit(page_size)
+    cursor = (
+        db.problem_info.find({}, {"_id": 0})
+        .sort("date", -1)
+        .skip(skip)
+        .limit(page_size)
+    )
     records = [doc async for doc in cursor]
     total = await db.problem_info.count_documents({})
     return {"page": page, "page_size": page_size, "total": total, "records": records}
 
+
 @app.post("/dashboard/record")
 async def record_publish(record: PublishRecord):
-    await db.problem_info.update_one(record.model_dump(),upsert=True)
+    await db.problem_info.update_one(record.model_dump(), upsert=True)
     return {"status": "ok"}
+
 
 # -----------------------------
 # Reminder Infrastructure
@@ -227,46 +222,29 @@ def reminder_health():
     Health check endpoint for reminder services.
     """
 
-    return {
-        "status": "active",
-        "message": "Reminder call infrastructure is running."
-    }
+    return {"status": "active", "message": "Reminder call infrastructure is running."}
 
 
 @app.post("/reminder/subscribe")
 async def subscribe(pref: ReminderPreference):
     await db.preferences.update_one(
-        {"whatsapp_number": pref.whatsapp_number},
-        {"$set": pref.dict()},
-        upsert=True
+        {"whatsapp_number": pref.whatsapp_number}, {"$set": pref.dict()}, upsert=True
     )
 
-    return {
-        "status": "success",
-        "message": "Subscribed!"
-    }
+    return {"status": "success", "message": "Subscribed!"}
 
 
 @app.post("/reminder/unsubscribe")
 async def unsubscribe(data: dict):
     await db.preferences.update_one(
-        {"whatsapp_number": data["whatsapp_number"]},
-        {"$set": {"is_opted_in": False}}
+        {"whatsapp_number": data["whatsapp_number"]}, {"$set": {"is_opted_in": False}}
     )
 
-    return {
-        "status": "success",
-        "message": "Unsubscribed!"
-    }
+    return {"status": "success", "message": "Unsubscribed!"}
 
 
 # -----------------------------
 # Run Server
 # -----------------------------
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=10000,
-        reload=True
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=10000, reload=True)
