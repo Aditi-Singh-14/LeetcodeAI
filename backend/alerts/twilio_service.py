@@ -12,8 +12,11 @@ client = Client(account_sid, auth_token)
 def make_call(to_number: str, audio_url: str = None, text_to_say: str = None):
     twilio_number = os.getenv("TWILIO_PHONE_NUMBER", "")
     # Remove 'whatsapp:' prefix if it exists when making a voice call
-    from_number = twilio_number.replace("whatsapp:", "") if twilio_number else twilio_number
+    from_number = twilio_number.replace("whatsapp:", "") if twilio_number else ""
     
+    if not from_number:
+        raise ValueError("TWILIO_PHONE_NUMBER is not set in environment variables! You need an active Twilio Voice number to make phone calls.")
+        
     if audio_url:
         twiml = f"<Response><Play>{audio_url}</Play></Response>"
     else:
