@@ -31,7 +31,45 @@ async def _check_unsolved_users_async():
             "date": {"$regex": f"^{today_str}"}
         })
         
-        if solved_today_count == 0:
+        has_solved = solved_today_count > 0
+        
+        # Also check Leetcode submissions
+        lc_username = user.get("leetcode_username", "vanshaggarwal27")
+        if not has_solved and lc_username:
+            try:
+                import requests
+                import asyncio
+                import datetime
+                
+                def check_lc():
+                    query = """
+                    query($username: String!, $limit: Int!) {
+                      recentAcSubmissionList(username: $username, limit: $limit) {
+                        timestamp
+                      }
+                    }
+                    """
+                    return requests.post("https://leetcode.com/graphql", json={
+                        "query": query,
+                        "variables": {"username": lc_username, "limit": 10}
+                    }, timeout=10).json()
+                    
+                data = await asyncio.to_thread(check_lc)
+                submissions = data.get("data", {}).get("recentAcSubmissionList", [])
+                
+                # Check if any submission has a timestamp from today (UTC)
+                midnight_utc = datetime.datetime.now(datetime.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+                midnight_timestamp = int(midnight_utc.timestamp())
+                
+                for sub in submissions:
+                    if int(sub["timestamp"]) >= midnight_timestamp:
+                        has_solved = True
+                        print(f"Found recent Leetcode submission today for {lc_username}!")
+                        break
+            except Exception as e:
+                print(f"Failed to check Leetcode for {lc_username}:", e)
+        
+        if not has_solved:
             # Not solved today, send reminder!
             name = "Vansh" # Fallback or could add name to DB
             message = generate_message(name)
