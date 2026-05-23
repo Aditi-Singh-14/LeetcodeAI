@@ -17,3 +17,14 @@ def make_call(to_number: str, audio_url: str):
     )
 
     return call.sid
+
+def send_whatsapp_message(to_number: str, body: str):
+    formatted_to = to_number if to_number.startswith("whatsapp:") else f"whatsapp:{to_number}"
+    formatted_from = twilio_number if twilio_number.startswith("whatsapp:") else f"whatsapp:{twilio_number}"
+    
+    message = client.messages.create(
+        from_=formatted_from,
+        body=body,
+        to=formatted_to
+    )
+    return message.sid
