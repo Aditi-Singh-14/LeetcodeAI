@@ -20,7 +20,9 @@ def make_call(to_number: str, audio_url: str = None, text_to_say: str = None):
     if audio_url:
         twiml = f"<Response><Play>{audio_url}</Play></Response>"
     else:
-        twiml = f"<Response><Say voice='Polly.Aditi' language='en-IN'>{text_to_say}</Say></Response>"
+        # Tweak spelling specifically for the robotic voice so it pronounces it natively
+        spoken_text = text_to_say.replace("Lakh", "Laakh").replace("krke", "karke").replace("chl", "chal")
+        twiml = f"<Response><Say voice='Polly.Aditi' language='hi-IN'>{spoken_text}</Say></Response>"
         
     call = client.calls.create(
         to=to_number,
