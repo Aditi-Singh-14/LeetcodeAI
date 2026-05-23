@@ -11,6 +11,7 @@ from twilio.rest import Client
 
 from ai import generate_blog
 from devto import publish_to_platforms
+from social import share_to_platforms
 from models.reminder import PublishRecord
 from services.reminder_scheduler import start_scheduler
 
@@ -52,6 +53,7 @@ class Problem(BaseModel):
     custom_prompt: str = None  # custom_prompt for the user
     platforms: list[str] | None = None
     publish_as_draft: bool = False
+    share_to_social: bool = True
     tags: list[str] | None = None
 
 
@@ -153,11 +155,31 @@ async def create_blog(problem: Problem):
     except Exception as e:
         print(f"Database logging failed: {e}")
 
+    social_results = []
+    if problem.share_to_social and successful:
+        # Find the first URL to share from successful platforms
+        post_url = None
+        for res in successful:
+            if res.get("url"):
+                post_url = res["url"]
+                break
+        
+        if post_url:
+            try:
+                social_results = share_to_platforms(
+                    title=problem.title, 
+                    post_url=post_url, 
+                    tags=problem.tags
+                )
+            except Exception as e:
+                print(f"Social sharing failed: {e}")
+
     return {
         "status": overall_status,
         "data": {
             "blog_content": blog_content,
             "platforms": platform_results,
+            "social": social_results,
         },
     }
 
