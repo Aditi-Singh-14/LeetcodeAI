@@ -1,15 +1,17 @@
 import os
+from datetime import datetime, timedelta, timezone
 
 import motor.motor_asyncio
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from twilio.rest import Client
 
 from ai.blog_generator import generate_blog
 from devto import publish_to_platforms
+from models.reminder import PublishRecord
 from services.reminder_scheduler import start_scheduler
 
 load_dotenv()
@@ -88,7 +90,7 @@ def health_check():
 # Blog Generator Endpoint
 # -----------------------------
 @app.post("/generate-blog")
-def create_blog(problem: Problem):
+async def create_blog(problem: Problem):
     """
     Accepts a LeetCode problem and:
     1. Generates a blog using Gemini AI
@@ -120,25 +122,124 @@ def create_blog(problem: Problem):
             published=not problem.publish_as_draft,
             tags=problem.tags,
         )
-        successful_results = [
-            result for result in platform_results if result.get("status") == "success"
-        ]
-        overall_status = "error"
-        if len(successful_results) == len(platform_results):
-            overall_status = "success"
-        elif successful_results:
-            overall_status = "partial_success"
-
-        return {
-            "status": overall_status,
-            "data": {
-                "blog_content": blog_content,
-                "platforms": platform_results,
-            },
-        }
-
+        successful = [r for r in platform_results if r.get("status") == "success"]
+        overall_status = (
+            "success"
+            if len(successful) == len(platform_results)
+            else "partial_success"
+            if successful
+            else "error"
+        )
     except Exception as e:
         return {"status": "error", "message": f"Publishing failure: {str(e)}"}
+
+    try:
+        record = PublishRecord(
+            title=problem.title,
+            date=datetime.now(timezone.utc).isoformat(),
+            platforms=[r["platform"] for r in successful],
+            status=overall_status,
+            author=problem.author,
+        )
+
+        await db.problem_info.update_one(
+            {
+                "title": problem.title,
+                "author": problem.author,
+            },
+            {
+                "$set": record.model_dump(),
+            },
+            upsert=True,
+        )
+
+    except Exception as e:
+        print(f"Database logging failed: {e}")
+
+    return {
+        "status": overall_status,
+        "data": {
+            "blog_content": blog_content,
+            "platforms": platform_results,
+        },
+    }
+
+
+# dashboard endpoints
+@app.get("/dashboard/stats")
+async def get_dashboard_stats():
+    total = await db.problem_info.count_documents({})
+
+    pipeline_platforms = [
+        {"$unwind": "$platforms"},
+        {"$group": {"_id": "$platforms", "count": {"$sum": 1}}},
+    ]
+    platform_cursor = db.problem_info.aggregate(pipeline_platforms)
+    platform_counts = {doc["_id"]: doc["count"] async for doc in platform_cursor}
+
+    seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    pipeline_week = [
+        {"$match": {"date": {"$gte": seven_days_ago}}},
+        {
+            "$group": {
+                "_id": {"$substr": ["$date", 0, 10]},
+                "count": {"$sum": 1},
+            }
+        },
+        {"$sort": {"_id": 1}},
+    ]
+    week_cursor = db.problem_info.aggregate(pipeline_week)
+    week_activity = {doc["_id"]: doc["count"] async for doc in week_cursor}
+
+    recent_cursor = (
+        db.problem_info.find(
+            {},
+            {"_id": 0, "title": 1, "date": 1, "platforms": 1, "status": 1, "author": 1},
+        )
+        .sort("date", -1)
+        .limit(10)
+    )
+    recent = [doc async for doc in recent_cursor]
+
+    return {
+        "total_posts": total,
+        "platform_counts": platform_counts,
+        "week_activity": week_activity,
+        "recent": recent,
+    }
+
+
+@app.get("/dashboard/history")
+async def get_dashboard_history(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    skip = (page - 1) * page_size
+    cursor = (
+        db.problem_info.find({}, {"_id": 0})
+        .sort("date", -1)
+        .skip(skip)
+        .limit(page_size)
+    )
+    records = [doc async for doc in cursor]
+    total = await db.problem_info.count_documents({})
+    return {"page": page, "page_size": page_size, "total": total, "records": records}
+
+
+@app.post("/dashboard/record")
+async def record_publish(record: PublishRecord):
+    await db.problem_info.update_one(
+        {
+            "title": record.title,
+            "author": record.author
+        },
+        {
+            "$set": record.model_dump()
+        },
+        upsert=True
+    )
+    return {"status": "ok"}
+
 
 
 # -----------------------------
