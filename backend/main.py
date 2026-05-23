@@ -280,7 +280,11 @@ def reminder_health():
 def test_whatsapp():
     try:
         from alerts.twilio_service import send_whatsapp_message
-        sid = send_whatsapp_message("+917819834452", "Hello Vansh! Your Twilio WhatsApp integration on Render is working perfectly! 🚀")
+        import os
+        phone = os.getenv("TEST_PHONE_NUMBER")
+        if not phone:
+            return {"status": "error", "message": "TEST_PHONE_NUMBER is not set in environment."}
+        sid = send_whatsapp_message(phone, "Hello Vansh! Your Twilio WhatsApp integration on Render is working perfectly! 🚀")
         return {"status": "success", "sid": sid, "message": "WhatsApp message sent successfully."}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -300,12 +304,21 @@ def test_call():
             if backend_url.endswith("/"):
                 backend_url = backend_url[:-1]
             audio_url = f"{backend_url}/{audio_file}"
-            sid = make_call("+917819834452", audio_url=audio_url)
+            
+            phone = os.getenv("TEST_PHONE_NUMBER")
+            if not phone:
+                return {"status": "error", "message": "TEST_PHONE_NUMBER is not set in environment."}
+                
+            sid = make_call(phone, audio_url=audio_url)
             return {"status": "success", "sid": sid, "audio_url": audio_url, "message": "Call initiated successfully with ElevenLabs."}
         except Exception as el_err:
             print("ElevenLabs Error in Test Route:", el_err)
             # Fallback to Twilio TTS
-            sid = make_call("+917819834452", text_to_say=message)
+            phone = os.getenv("TEST_PHONE_NUMBER")
+            if not phone:
+                return {"status": "error", "message": "TEST_PHONE_NUMBER is not set in environment."}
+                
+            sid = make_call(phone, text_to_say=message)
             return {"status": "success", "sid": sid, "message": "ElevenLabs failed (Free Tier VPN block), but Twilio TTS call initiated successfully.", "elevenlabs_error": str(el_err)}
     except Exception as e:
         return {"status": "error", "message": str(e)}
