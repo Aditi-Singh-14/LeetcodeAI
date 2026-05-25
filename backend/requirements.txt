@@ -10,6 +10,7 @@ apscheduler
 motor
 pytz
 pymongo
+tweepy
 
 # --- Test & Dev Dependencies ---
 pytest
