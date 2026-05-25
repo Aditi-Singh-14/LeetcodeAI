@@ -89,7 +89,7 @@ def _build_prompt(problem, current_time: str) -> str:
        problem: LeetCode problem object containing title, description, code and author
        current_time: Current timestamp string
 
-    Returns:S
+    Returns:
         str: Fully formatted prompt string for Gemini AI blog generation.
     """
     if _is_malicious(problem.description) or _is_malicious(problem.code): #changed
