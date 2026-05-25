@@ -2,6 +2,8 @@ fastapi
 uvicorn[standard]
 pydantic
 google-genai
+openai
+requests
 httpx
 python-dotenv
 twilio
