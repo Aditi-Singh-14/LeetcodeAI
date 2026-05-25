@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timedelta, timezone
 
 import motor.motor_asyncio
 import uvicorn
@@ -6,12 +7,16 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from twilio.rest import Client
 
-from ai import generate_blog
+# --- UPDATED AI PATH ---
+from ai_core.blog_generator import generate_blog
 from devto import publish_to_platforms
+from models.reminder import PublishRecord
 from services.reminder_scheduler import start_scheduler
+from social import share_to_platforms
 
 load_dotenv()
 
@@ -24,6 +29,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+os.makedirs("static", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # -----------------------------
@@ -51,6 +59,7 @@ class Problem(BaseModel):
     custom_prompt: str | None = None
     platforms: list[str] | None = None
     publish_as_draft: bool = False
+    share_to_social: bool = True
     tags: list[str] | None = None
 
 
@@ -69,7 +78,6 @@ async def startup_event():
     """
     Start background schedulers when server starts.
     """
-
     try:
         start_scheduler()
         print("Reminder scheduler started successfully.")
@@ -92,9 +100,23 @@ def health_check():
 async def create_blog(problem: Problem):
     """
     Accepts a LeetCode problem and:
-    1. Generates a blog using Gemini AI
+    1. Generates a blog using the unified ai.providers module
     2. Publishes it to one or more configured platforms
     """
+
+    # Check if the user has already published a successful blog for this problem
+    existing_record = await db.problem_info.find_one({
+        "title": problem.title,
+        "author": problem.author,
+        "status": "success"
+    })
+
+    if existing_record:
+        return {
+            "status": "error",
+            "message": f"Solution for '{problem.title}' has already been published! Keep up the great streak!"
+        }
+
     if problem.custom_prompt and len(problem.custom_prompt.strip()) > 1000:
         raise HTTPException(
             status_code=400,
@@ -108,7 +130,10 @@ async def create_blog(problem: Problem):
         blog_content = await run_in_threadpool(generate_blog, problem)
 
     except Exception as e:
-        return {"status": "error", "message": f"Gemini API failure: {str(e)}"}
+        return {
+                "status": "error",
+                "message": f"AI provider failure: {str(e)}"
+            }
 
     try:
         platform_results = await publish_to_platforms(
@@ -118,26 +143,145 @@ async def create_blog(problem: Problem):
             published=not problem.publish_as_draft,
             tags=problem.tags,
         )
-        successful_results = [
-            result for result in platform_results if result.get("status") == "success"
-        ]
-        overall_status = "error"
-        if len(successful_results) == len(platform_results):
-            overall_status = "success"
-        elif successful_results:
-            overall_status = "partial_success"
-
-        return {
-            "status": overall_status,
-            "data": {
-                "blog_content": blog_content,
-                "platforms": platform_results,
-            },
-        }
-
+        successful = [r for r in platform_results if r.get("status") == "success"]
+        overall_status = (
+            "success"
+            if len(successful) == len(platform_results)
+            else "partial_success"
+            if successful
+            else "error"
+        )
     except Exception as e:
         return {"status": "error", "message": f"Publishing failure: {str(e)}"}
 
+    try:
+        record = PublishRecord(
+            title=problem.title,
+            date=datetime.now(timezone.utc).isoformat(),
+            platforms=[r["platform"] for r in successful],
+            status=overall_status,
+            author=problem.author,
+        )
+
+        await db.problem_info.update_one(
+            {
+                "title": problem.title,
+                "author": problem.author,
+            },
+            {
+                "$set": record.model_dump(),
+            },
+            upsert=True,
+        )
+
+    except Exception as e:
+        print(f"Database logging failed: {e}")
+
+    social_results = []
+    if problem.share_to_social and successful:
+        # Find the first URL to share from successful platforms
+        post_url = None
+        for res in successful:
+            if res.get("url"):
+                post_url = res["url"]
+                break
+
+        if post_url:
+            try:
+                social_results = share_to_platforms(
+                    title=problem.title,
+                    post_url=post_url,
+                    tags=problem.tags
+                )
+            except Exception as e:
+                print(f"Social sharing failed: {e}")
+
+    return {
+        "status": overall_status,
+        "data": {
+            "blog_content": blog_content,
+            "platforms": platform_results,
+            "social": social_results,
+        },
+    }
+
+
+# -----------------------------
+# Dashboard Endpoints
+# -----------------------------
+@app.get("/dashboard/stats")
+async def get_dashboard_stats():
+    total = await db.problem_info.count_documents({})
+
+    pipeline_platforms = [
+        {"$unwind": "$platforms"},
+        {"$group": {"_id": "$platforms", "count": {"$sum": 1}}},
+    ]
+    platform_cursor = db.problem_info.aggregate(pipeline_platforms)
+    platform_counts = {doc["_id"]: doc["count"] async for doc in platform_cursor}
+
+    seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    pipeline_week = [
+        {"$match": {"date": {"$gte": seven_days_ago}}},
+        {
+            "$group": {
+                "_id": {"$substr": ["$date", 0, 10]},
+                "count": {"$sum": 1},
+            }
+        },
+        {"$sort": {"_id": 1}},
+    ]
+    week_cursor = db.problem_info.aggregate(pipeline_week)
+    week_activity = {doc["_id"]: doc["count"] async for doc in week_cursor}
+
+    recent_cursor = (
+        db.problem_info.find(
+            {},
+            {"_id": 0, "title": 1, "date": 1, "platforms": 1, "status": 1, "author": 1},
+        )
+        .sort("date", -1)
+        .limit(10)
+    )
+    recent = [doc async for doc in recent_cursor]
+
+    return {
+        "total_posts": total,
+        "platform_counts": platform_counts,
+        "week_activity": week_activity,
+        "recent": recent,
+    }
+
+
+@app.get("/dashboard/history")
+async def get_dashboard_history(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    skip = (page - 1) * page_size
+    cursor = (
+        db.problem_info.find({}, {"_id": 0})
+        .sort("date", -1)
+        .skip(skip)
+        .limit(page_size)
+    )
+    records = [doc async for doc in cursor]
+    total = await db.problem_info.count_documents({})
+    return {"page": page, "page_size": page_size, "total": total, "records": records}
+
+
+@app.post("/dashboard/record")
+async def record_publish(record: PublishRecord):
+    await db.problem_info.update_one(
+        {
+            "title": record.title,
+            "author": record.author
+        },
+        {
+            "$set": record.model_dump()
+        },
+        upsert=True
+    )
+    return {"status": "ok"}
 
 # -----------------------------
 # Reminder Infrastructure
@@ -147,16 +291,63 @@ def reminder_health():
     """
     Health check endpoint for reminder services.
     """
-
     return {"status": "active", "message": "Reminder call infrastructure is running."}
+
+@app.get("/test-whatsapp")
+def test_whatsapp():
+    try:
+        import os
+
+        from alerts.twilio_service import send_whatsapp_message
+        phone = os.getenv("TEST_PHONE_NUMBER")
+        if not phone:
+            return {"status": "error", "message": "TEST_PHONE_NUMBER is not set in environment."}
+        sid = send_whatsapp_message(phone, "Hello Vansh! Your Twilio WhatsApp integration on Render is working perfectly! 🚀")
+        return {"status": "success", "sid": sid, "message": "WhatsApp message sent successfully."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/test-call")
+def test_call():
+    try:
+        import os
+
+        from alerts.elevenlabs_service import generate_audio, generate_message
+        from alerts.twilio_service import make_call
+
+        message = generate_message("Vansh")
+
+        try:
+            audio_file = generate_audio(message)
+            backend_url = os.getenv("BACKEND_URL", "https://leetcodeai-backend.onrender.com")
+            if backend_url.endswith("/"):
+                backend_url = backend_url[:-1]
+            audio_url = f"{backend_url}/{audio_file}"
+
+            phone = os.getenv("TEST_PHONE_NUMBER")
+            if not phone:
+                return {"status": "error", "message": "TEST_PHONE_NUMBER is not set in environment."}
+
+            sid = make_call(phone, audio_url=audio_url)
+            return {"status": "success", "sid": sid, "audio_url": audio_url, "message": "Call initiated successfully with ElevenLabs."}
+        except Exception as el_err:
+            print("ElevenLabs Error in Test Route:", el_err)
+            # Fallback to Twilio TTS
+            phone = os.getenv("TEST_PHONE_NUMBER")
+            if not phone:
+                return {"status": "error", "message": "TEST_PHONE_NUMBER is not set in environment."}
+
+            sid = make_call(phone, text_to_say=message)
+            return {"status": "success", "sid": sid, "message": "ElevenLabs failed (Free Tier VPN block), but Twilio TTS call initiated successfully.", "elevenlabs_error": str(el_err)}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 @app.post("/reminder/subscribe")
 async def subscribe(pref: ReminderPreference):
     await db.preferences.update_one(
-        {"whatsapp_number": pref.whatsapp_number}, {"$set": pref.dict()}, upsert=True
+        {"whatsapp_number": pref.whatsapp_number}, {"$set": pref.model_dump()}, upsert=True
     )
-
     return {"status": "success", "message": "Subscribed!"}
 
 
@@ -165,7 +356,6 @@ async def unsubscribe(data: dict):
     await db.preferences.update_one(
         {"whatsapp_number": data["whatsapp_number"]}, {"$set": {"is_opted_in": False}}
     )
-
     return {"status": "success", "message": "Unsubscribed!"}
 
 
@@ -174,3 +364,9 @@ async def unsubscribe(data: dict):
 # -----------------------------
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=10000, reload=True)
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=10000,
+        reload=True
+    )
