@@ -1,44 +1,155 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
-  <!-- Background Circle -->
-  <circle cx="100" cy="100" r="95" fill="#1e3a8a" />
-  
-  <!-- Brain/Neural Network Pattern -->
-  <g stroke="#60a5fa" stroke-width="2" fill="none">
-    <!-- Neural connections -->
-    <path d="M 50 80 Q 70 70, 90 80" opacity="0.6"/>
-    <path d="M 90 80 Q 110 70, 130 80" opacity="0.6"/>
-    <path d="M 110 100 Q 130 90, 150 100" opacity="0.6"/>
-    <path d="M 50 120 Q 70 110, 90 120" opacity="0.6"/>
-    <path d="M 90 120 Q 110 130, 130 120" opacity="0.6"/>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="#0B0D12"/>
+
+  <!-- ICON -->
+  <g transform="translate(250 180)">
+
+    <!-- Brain Outline -->
+    <path
+      d="
+      M180 80
+      C130 80 95 115 95 160
+      C60 175 40 205 40 245
+      C40 300 78 340 130 348
+      C138 392 170 425 215 425
+      "
+      stroke="#D4A64A"
+      stroke-width="16"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      fill="none"
+    />
+
+    <!-- Brain Curves -->
+    <path
+      d="M145 125 C120 140 118 175 145 190"
+      stroke="#D4A64A"
+      stroke-width="14"
+      stroke-linecap="round"
+      fill="none"
+    />
+
+    <path
+      d="M130 235 C105 250 105 285 130 300"
+      stroke="#D4A64A"
+      stroke-width="14"
+      stroke-linecap="round"
+      fill="none"
+    />
+
+    <path
+      d="M205 160 C230 175 230 205 205 220"
+      stroke="#D4A64A"
+      stroke-width="14"
+      stroke-linecap="round"
+      fill="none"
+    />
+
+    <path
+      d="M200 305 C225 320 225 350 200 365"
+      stroke="#D4A64A"
+      stroke-width="14"
+      stroke-linecap="round"
+      fill="none"
+    />
+
+    <!-- Divider -->
+    <line
+      x1="260"
+      y1="70"
+      x2="260"
+      y2="430"
+      stroke="#D4A64A"
+      stroke-width="16"
+      stroke-linecap="round"
+    />
+
+    <!-- Terminal Bracket -->
+    <path
+      d="
+      M320 120
+      H355
+      V385
+      H320
+      "
+      stroke="#D4A64A"
+      stroke-width="16"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      fill="none"
+    />
+
+    <!-- Data Lines -->
+    <circle cx="385" cy="150" r="7" fill="#D4A64A"/>
+    <line
+      x1="405"
+      y1="150"
+      x2="520"
+      y2="150"
+      stroke="#D4A64A"
+      stroke-width="14"
+      stroke-linecap="round"
+    />
+
+    <circle cx="385" cy="220" r="7" fill="#D4A64A"/>
+    <line
+      x1="405"
+      y1="220"
+      x2="560"
+      y2="220"
+      stroke="#D4A64A"
+      stroke-width="14"
+      stroke-linecap="round"
+    />
+
+    <circle cx="385" cy="290" r="7" fill="#D4A64A"/>
+    <line
+      x1="405"
+      y1="290"
+      x2="520"
+      y2="290"
+      stroke="#D4A64A"
+      stroke-width="14"
+      stroke-linecap="round"
+    />
+
+    <circle cx="385" cy="360" r="7" fill="#D4A64A"/>
+    <line
+      x1="405"
+      y1="360"
+      x2="550"
+      y2="360"
+      stroke="#D4A64A"
+      stroke-width="14"
+      stroke-linecap="round"
+    />
+
+    <!-- Arrow -->
+    <path
+      d="M285 240 L320 270 L285 300"
+      stroke="#D4A64A"
+      stroke-width="14"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      fill="none"
+    />
+
   </g>
-  
-  <!-- Neurons/Nodes -->
-  <circle cx="50" cy="80" r="4" fill="#60a5fa"/>
-  <circle cx="90" cy="80" r="4" fill="#60a5fa"/>
-  <circle cx="130" cy="80" r="4" fill="#60a5fa"/>
-  <circle cx="150" cy="100" r="4" fill="#60a5fa"/>
-  <circle cx="50" cy="120" r="4" fill="#60a5fa"/>
-  <circle cx="90" cy="120" r="4" fill="#60a5fa"/>
-  <circle cx="130" cy="120" r="4" fill="#60a5fa"/>
-  
-  <!-- Code Brackets -->
-  <g fill="#fbbf24" font-family="monospace" font-size="48" font-weight="bold">
-    <text x="30" y="110" opacity="0.9">&lt;</text>
-    <text x="155" y="110" opacity="0.9">&gt;</text>
-  </g>
-  
-  <!-- Central Brain Icon -->
-  <g transform="translate(100, 100)">
-    <!-- Brain outline -->
-    <path d="M -15,-20 Q -25,-10 -20,5 Q -15,15 0,15 Q 15,15 20,5 Q 25,-10 15,-20 Q 5,-25 0,-22 Q -5,-25 -15,-20" 
-          fill="#3b82f6" stroke="#60a5fa" stroke-width="1.5"/>
-    <!-- Brain folds -->
-    <path d="M -10,-15 Q -8,-10 -10,-5" stroke="#1e3a8a" stroke-width="1" fill="none"/>
-    <path d="M 0,-18 Q 2,-12 0,-8" stroke="#1e3a8a" stroke-width="1" fill="none"/>
-    <path d="M 10,-15 Q 8,-10 10,-5" stroke="#1e3a8a" stroke-width="1" fill="none"/>
-  </g>
-  
-  <!-- "AI" Text -->
-  <text x="100" y="165" font-family="Arial, sans-serif" font-size="24" font-weight="bold" 
-        fill="#fbbf24" text-anchor="middle">AI</text>
+
+  <!-- BRAND NAME -->
+  <text
+    x="512"
+    y="820"
+    text-anchor="middle"
+    font-family="Inter, Poppins, Helvetica, Arial, sans-serif"
+    font-size="92"
+    font-weight="400"
+    letter-spacing="1"
+  >
+    <tspan fill="#F5F7FA">LeetLog </tspan>
+    <tspan fill="#D4A64A" font-weight="600">AI</tspan>
+  </text>
+
 </svg>
