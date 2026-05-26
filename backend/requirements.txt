@@ -2,6 +2,7 @@ fastapi==0.136.1
 uvicorn[standard]==0.47.0
 pydantic==2.13.4
 google-genai==2.3.0
+openai==2.34.0
 requests==2.34.2
 python-dotenv==1.2.2
 twilio==9.10.9
@@ -18,4 +19,4 @@ pytest-mock
 httpx
 responses
 ruff
-tweepy==4.14.0
+tweepy==4.16.0
