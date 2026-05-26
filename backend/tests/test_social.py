@@ -1,6 +1,5 @@
-import pytest
 from unittest.mock import patch, MagicMock
-from social import share_to_platforms, SocialSharerError
+from social import share_to_platforms
 
 def test_share_to_platforms_twitter_success(monkeypatch):
     monkeypatch.setenv("TWITTER_API_KEY", "key")
@@ -19,7 +18,6 @@ def test_share_to_platforms_twitter_success(monkeypatch):
         results = share_to_platforms("Test Post", "http://example.com", ["tag1"])
 
         assert len(results) == 2
-        
         twitter_result = next(r for r in results if r["platform"] == "twitter")
         assert twitter_result["status"] == "success"
         assert twitter_result["url"] == "https://twitter.com/user/status/12345"
