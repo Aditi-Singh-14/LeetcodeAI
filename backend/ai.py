@@ -1,9 +1,10 @@
-from google import genai
+import logging
 import os
 import time
-import logging
-from dotenv import load_dotenv
 from datetime import datetime
+
+from dotenv import load_dotenv
+from google import genai
 
 load_dotenv()
 
