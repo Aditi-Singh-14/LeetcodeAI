@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -7,17 +8,16 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from twilio.rest import Client
-from fastapi.responses import JSONResponse
 from pymongo.errors import PyMongoError
-import logging
+from twilio.rest import Client
 
 logger = logging.getLogger(__name__)
 
-from ai_core.blog_generator import generate_blog
 from ai import rate_code_efficiency
+from ai_core.blog_generator import generate_blog
 from devto import publish_to_platforms
 from models.reminder import PublishRecord
 from services.reminder_scheduler import start_scheduler
@@ -29,12 +29,12 @@ app = FastAPI(title="LeetLog AI", version="1.0.0")
 
 @app.exception_handler(PyMongoError)
 async def mongodb_exception_handler(request, exc: PyMongoError):
-    logger.error(f"Database error encountered: {str(exc)}") 
-    
+    logger.error(f"Database error encountered: {str(exc)}")
+
     return JSONResponse(
         status_code=503,
         content={
-            "status": "error", 
+            "status": "error",
             "message": "Database connection failed. Please ensure MongoDB is running."
         }
     )
