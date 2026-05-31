@@ -144,6 +144,7 @@ class TestReminderRoutes:
             "whatsapp_number": "+911234567890",
             "reminder_time": "09:00",
             "timezone": "Asia/Kolkata",
+            "is_opted_in": True,
         }
         response = client.post("/reminder/subscribe", json=payload)
         assert response.status_code == 200
