@@ -3,6 +3,7 @@ uvicorn[standard]
 pydantic
 google-genai
 httpx
+requests
 python-dotenv
 twilio
 elevenlabs
@@ -19,4 +20,3 @@ pytest-asyncio
 pytest-mock
 responses
 ruff
-
