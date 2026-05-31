@@ -41,6 +41,8 @@ class FakeMotorClient:
 def test_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
     monkeypatch.setenv("DEVTO_API_KEY", "test-devto-key")
+    monkeypatch.setenv("HASHNODE_TOKEN", "test-hashnode-token")
+    monkeypatch.setenv("HASHNODE_PUBLICATION_ID", "test-pub-id-123")
     monkeypatch.setenv("TWILIO_ACCOUNT_SID", "test-twilio-sid")
     monkeypatch.setenv("TWILIO_AUTH_TOKEN", "test-twilio-token")
     monkeypatch.setenv("TWILIO_PHONE_NUMBER", "+10000000000")
@@ -157,6 +159,35 @@ def mock_devto_request(mocker):
         return_value=response,
     )
     return {"request": request_mock, "response": response}
+
+
+@pytest.fixture
+def mock_hashnode_request(mocker):
+    """
+    Mocks httpx.AsyncClient.post for HashnodePublisher tests.
+
+    Default return value is a successful GraphQL response.
+    Individual tests can override ``response.json.return_value`` to simulate
+    GraphQL error payloads without making real network calls or needing API keys.
+    """
+    import httpx
+
+    response = mocker.Mock(spec=httpx.Response)
+    response.status_code = 200
+    response.json.return_value = {
+        "data": {
+            "publishPost": {
+                "post": {
+                    "id": "hn-post-123",
+                    "url": "https://username.hashnode.dev/leetcode-solution-two-sum",
+                    "title": "LeetCode Solution: Two Sum",
+                }
+            }
+        }
+    }
+    mock_post = mocker.AsyncMock(return_value=response)
+    mocker.patch("httpx.AsyncClient.post", new=mock_post)
+    return {"request": mock_post, "response": response}
 
 
 @pytest.fixture

@@ -1,3 +1,4 @@
+import asyncio
 import os
 import time
 from dataclasses import dataclass
@@ -109,7 +110,7 @@ class DevToPublisher(BasePublisher):
 class HashnodePublisher(BasePublisher):
     platform = "hashnode"
 
-    def publish(
+    async def publish(
         self, title: str, content: str, *, tags: list[str], published: bool
     ) -> PublishResult:
         token = os.getenv("HASHNODE_TOKEN")
@@ -150,6 +151,11 @@ class HashnodePublisher(BasePublisher):
             },
             platform="Hashnode",
         )
+        # GraphQL always returns HTTP 200; check the response-level errors field.
+        gql_errors = response.get("errors")
+        if gql_errors:
+            message = gql_errors[0].get("message", "Hashnode GraphQL error")
+            raise PublisherError(f"Hashnode GraphQL error: {message}")
         post = response.get("data", {}).get("publishPost", {}).get("post", {})
         return PublishResult(
             platform=self.platform,
@@ -251,7 +257,7 @@ def normalize_platforms(platforms: list[str] | None) -> list[str]:
     return normalized or ["devto"]
 
 
-def publish_to_platforms(
+async def publish_to_platforms(
     title: str,
     content: str,
     *,
@@ -269,14 +275,19 @@ def publish_to_platforms(
     results: list[PublishResult] = []
     for platform in selected_platforms:
         try:
-            results.append(
-                PUBLISHERS[platform].publish(
-                    title,
-                    content,
-                    tags=clean_tags,
-                    published=published,
-                )
+            publisher = PUBLISHERS[platform]
+            publish_call = publisher.publish(
+                title,
+                content,
+                tags=clean_tags,
+                published=published,
             )
+            # HashnodePublisher.publish is async; await it if it's a coroutine
+            if asyncio.iscoroutine(publish_call):
+                result = await publish_call
+            else:
+                result = publish_call
+            results.append(result)
         except PublisherError as exc:
             results.append(
                 PublishResult(
