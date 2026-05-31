@@ -67,7 +67,7 @@ async def _check_unsolved_users_async():
 
         if not has_solved:
             # Not solved today, send reminder!
-            name = "Vansh"
+            name = user.get("name", "User")
             message = generate_message(name)
 
             print("Triggering alert for:", name)

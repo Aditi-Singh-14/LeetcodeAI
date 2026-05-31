@@ -88,6 +88,7 @@ class EfficiencyRequest(BaseModel):
 
 
 class ReminderPreference(BaseModel):
+    name: str
     whatsapp_number: str
     reminder_time: str = "09:00"
     timezone: str = "Asia/Kolkata"
