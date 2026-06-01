@@ -1,11 +1,12 @@
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import motor.motor_asyncio
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -20,6 +21,7 @@ from social import share_to_platforms
 
 load_dotenv()
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -31,6 +33,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Reminder scheduler failed to start: {e}")
     yield
+
 
 app = FastAPI(title="LeetLog AI", version="1.0.0", lifespan=lifespan)
 
@@ -82,7 +85,13 @@ class ReminderPreference(BaseModel):
     is_opted_in: bool = True
 
 
-
+def require_user(x_user_email: Optional[str]) -> str:
+    """Extract and validate user email from header."""
+    if not x_user_email or "@" not in x_user_email:
+        raise HTTPException(
+            status_code=401, detail="Missing or invalid X-User-Email header."
+        )
+    return x_user_email.lower().strip()
 
 
 # -----------------------------
@@ -97,24 +106,24 @@ def health_check():
 # Blog Generator Endpoint
 # -----------------------------
 @app.post("/generate-blog")
-async def create_blog(problem: Problem):
+async def create_blog(
+    problem: Problem, x_user_email: Optional[str] = Header(default=None)
+):
     """
     Accepts a LeetCode problem and:
     1. Generates a blog using the unified ai.providers module
     2. Publishes it to one or more configured platforms
     """
-
+    user_email = require_user(x_user_email)
     # Check if the user has already published a successful blog for this problem
-    existing_record = await db.problem_info.find_one({
-        "title": problem.title,
-        "author": problem.author,
-        "status": "success"
-    })
+    existing_record = await db.problem_info.find_one(
+        {"title": problem.title, "author": problem.author, "status": "success"}
+    )
 
     if existing_record:
         return {
             "status": "error",
-            "message": f"Solution for '{problem.title}' has already been published! Keep up the great streak!"
+            "message": f"Solution for '{problem.title}' has already been published! Keep up the great streak!",
         }
 
     if problem.custom_prompt and len(problem.custom_prompt.strip()) > 1000:
@@ -129,10 +138,7 @@ async def create_blog(problem: Problem):
     try:
         blog_content = generate_blog(problem)
     except Exception as e:
-        return {
-                "status": "error",
-                "message": f"AI provider failure: {str(e)}"
-            }
+        return {"status": "error", "message": f"AI provider failure: {str(e)}"}
 
     try:
         platform_results = await publish_to_platforms(
@@ -160,12 +166,14 @@ async def create_blog(problem: Problem):
             platforms=[r["platform"] for r in successful],
             status=overall_status,
             author=problem.author,
+            user_email=user_email,
         )
 
         await db.problem_info.update_one(
             {
                 "title": problem.title,
                 "author": problem.author,
+                "user_email": user_email,
             },
             {
                 "$set": record.model_dump(),
@@ -188,9 +196,7 @@ async def create_blog(problem: Problem):
         if post_url:
             try:
                 social_results = share_to_platforms(
-                    title=problem.title,
-                    post_url=post_url,
-                    tags=problem.tags
+                    title=problem.title, post_url=post_url, tags=problem.tags
                 )
             except Exception as e:
                 print(f"Social sharing failed: {e}")
@@ -209,78 +215,98 @@ async def create_blog(problem: Problem):
 # Dashboard Endpoints
 # -----------------------------
 @app.get("/dashboard/stats")
-async def get_dashboard_stats():
-    total = await db.problem_info.count_documents({})
+async def get_dashboard_stats(x_user_email: Optional[str] = Header(default=None)):
+    user_email = require_user(x_user_email)
+    user_filter = {"user_email": user_email}
 
-    pipeline_platforms = [
-        {"$unwind": "$platforms"},
-        {"$group": {"_id": "$platforms", "count": {"$sum": 1}}},
-    ]
-    platform_cursor = db.problem_info.aggregate(pipeline_platforms)
-    platform_counts = {doc["_id"]: doc["count"] async for doc in platform_cursor}
+    try:
+        total = await db.problem_info.count_documents(user_filter)
 
-    seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-    pipeline_week = [
-        {"$match": {"date": {"$gte": seven_days_ago}}},
-        {
-            "$group": {
-                "_id": {"$substr": ["$date", 0, 10]},
-                "count": {"$sum": 1},
-            }
-        },
-        {"$sort": {"_id": 1}},
-    ]
-    week_cursor = db.problem_info.aggregate(pipeline_week)
-    week_activity = {doc["_id"]: doc["count"] async for doc in week_cursor}
+        pipeline_platforms = [
+            {"$match": user_filter},
+            {"$unwind": "$platforms"},
+            {"$group": {"_id": "$platforms", "count": {"$sum": 1}}},
+        ]
+        platform_cursor = db.problem_info.aggregate(pipeline_platforms)
+        platform_counts = {doc["_id"]: doc["count"] async for doc in platform_cursor}
 
-    recent_cursor = (
-        db.problem_info.find(
-            {},
-            {"_id": 0, "title": 1, "date": 1, "platforms": 1, "status": 1, "author": 1},
+        seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        pipeline_week = [
+            {"$match": {**user_filter, "date": {"$gte": seven_days_ago}}},
+            {
+                "$group": {
+                    "_id": {"$substr": ["$date", 0, 10]},
+                    "count": {"$sum": 1},
+                }
+            },
+            {"$sort": {"_id": 1}},
+        ]
+        week_cursor = db.problem_info.aggregate(pipeline_week)
+        week_activity = {doc["_id"]: doc["count"] async for doc in week_cursor}
+
+        recent_cursor = (
+            db.problem_info.find(
+                user_filter,
+                {
+                    "_id": 0,
+                    "title": 1,
+                    "date": 1,
+                    "platforms": 1,
+                    "status": 1,
+                    "author": 1,
+                },
+            )
+            .sort("date", -1)
+            .limit(10)
         )
-        .sort("date", -1)
-        .limit(10)
-    )
-    recent = [doc async for doc in recent_cursor]
+        recent = [doc async for doc in recent_cursor]
 
-    return {
-        "total_posts": total,
-        "platform_counts": platform_counts,
-        "week_activity": week_activity,
-        "recent": recent,
-    }
+        return {
+            "total_posts": total,
+            "platform_counts": platform_counts,
+            "week_activity": week_activity,
+            "recent": recent,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {str(e)}")
 
 
 @app.get("/dashboard/history")
 async def get_dashboard_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    x_user_email: Optional[str] = Header(default=None),
 ):
+    user_email = require_user(x_user_email)
+    user_filter = {"user_email": user_email}
     skip = (page - 1) * page_size
     cursor = (
-        db.problem_info.find({}, {"_id": 0})
+        db.problem_info.find(user_filter, {"_id": 0})
         .sort("date", -1)
         .skip(skip)
         .limit(page_size)
     )
     records = [doc async for doc in cursor]
-    total = await db.problem_info.count_documents({})
+    total = await db.problem_info.count_documents(user_filter)
     return {"page": page, "page_size": page_size, "total": total, "records": records}
 
 
 @app.post("/dashboard/record")
-async def record_publish(record: PublishRecord):
+async def record_publish(
+    record: PublishRecord, x_user_email: Optional[str] = Header(default=None)
+):
+    user_email = require_user(x_user_email)
+    data = record.model_dump()
+    data["user_email"] = user_email
     await db.problem_info.update_one(
-        {
-            "title": record.title,
-            "author": record.author
-        },
-        {
-            "$set": record.model_dump()
-        },
-        upsert=True
+        {"title": record.title, "user_email": user_email},
+        {"$set": data},
+        upsert=True,
     )
     return {"status": "ok"}
+
 
 # -----------------------------
 # Reminder Infrastructure
@@ -292,19 +318,32 @@ def reminder_health():
     """
     return {"status": "active", "message": "Reminder call infrastructure is running."}
 
+
 @app.get("/test-whatsapp")
 def test_whatsapp():
     try:
         import os
 
         from alerts.twilio_service import send_whatsapp_message
+
         phone = os.getenv("TEST_PHONE_NUMBER")
         if not phone:
-            return {"status": "error", "message": "TEST_PHONE_NUMBER is not set in environment."}
-        sid = send_whatsapp_message(phone, "Hello Vansh! Your Twilio WhatsApp integration on Render is working perfectly! 🚀")
-        return {"status": "success", "sid": sid, "message": "WhatsApp message sent successfully."}
+            return {
+                "status": "error",
+                "message": "TEST_PHONE_NUMBER is not set in environment.",
+            }
+        sid = send_whatsapp_message(
+            phone,
+            "Hello Vansh! Your Twilio WhatsApp integration on Render is working perfectly! 🚀",
+        )
+        return {
+            "status": "success",
+            "sid": sid,
+            "message": "WhatsApp message sent successfully.",
+        }
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 @app.get("/test-call")
 def test_call():
@@ -318,26 +357,44 @@ def test_call():
 
         try:
             audio_file = generate_audio(message)
-            backend_url = os.getenv("BACKEND_URL", "https://leetcodeai-backend.onrender.com")
+            backend_url = os.getenv(
+                "BACKEND_URL", "https://leetcodeai-backend.onrender.com"
+            )
             if backend_url.endswith("/"):
                 backend_url = backend_url[:-1]
             audio_url = f"{backend_url}/{audio_file}"
 
             phone = os.getenv("TEST_PHONE_NUMBER")
             if not phone:
-                return {"status": "error", "message": "TEST_PHONE_NUMBER is not set in environment."}
+                return {
+                    "status": "error",
+                    "message": "TEST_PHONE_NUMBER is not set in environment.",
+                }
 
             sid = make_call(phone, audio_url=audio_url)
-            return {"status": "success", "sid": sid, "audio_url": audio_url, "message": "Call initiated successfully with ElevenLabs."}
+            return {
+                "status": "success",
+                "sid": sid,
+                "audio_url": audio_url,
+                "message": "Call initiated successfully with ElevenLabs.",
+            }
         except Exception as el_err:
             print("ElevenLabs Error in Test Route:", el_err)
             # Fallback to Twilio TTS
             phone = os.getenv("TEST_PHONE_NUMBER")
             if not phone:
-                return {"status": "error", "message": "TEST_PHONE_NUMBER is not set in environment."}
+                return {
+                    "status": "error",
+                    "message": "TEST_PHONE_NUMBER is not set in environment.",
+                }
 
             sid = make_call(phone, text_to_say=message)
-            return {"status": "success", "sid": sid, "message": "ElevenLabs failed (Free Tier VPN block), but Twilio TTS call initiated successfully.", "elevenlabs_error": str(el_err)}
+            return {
+                "status": "success",
+                "sid": sid,
+                "message": "ElevenLabs failed (Free Tier VPN block), but Twilio TTS call initiated successfully.",
+                "elevenlabs_error": str(el_err),
+            }
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -345,7 +402,9 @@ def test_call():
 @app.post("/reminder/subscribe")
 async def subscribe(pref: ReminderPreference):
     await db.preferences.update_one(
-        {"whatsapp_number": pref.whatsapp_number}, {"$set": pref.model_dump()}, upsert=True
+        {"whatsapp_number": pref.whatsapp_number},
+        {"$set": pref.model_dump()},
+        upsert=True,
     )
     return {"status": "success", "message": "Subscribed!"}
 
@@ -362,9 +421,4 @@ async def unsubscribe(data: dict):
 # Run Server
 # -----------------------------
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=10000,
-        reload=True
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=10000, reload=True)

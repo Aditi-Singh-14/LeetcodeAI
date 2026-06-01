@@ -27,14 +27,17 @@ class SocialResult:
             payload["message"] = self.message
         return payload
 
+
 class SocialSharerError(Exception):
     """Raised when a selected social platform cannot be shared to."""
+
 
 class BaseSocialSharer:
     platform = "base"
 
     def share(self, title: str, post_url: str, tags: list[str]) -> SocialResult:
         raise NotImplementedError
+
 
 class TwitterSharer(BaseSocialSharer):
     platform = "twitter"
@@ -56,38 +59,45 @@ class TwitterSharer(BaseSocialSharer):
                 consumer_key=api_key,
                 consumer_secret=api_secret,
                 access_token=access_token,
-                access_token_secret=access_secret
+                access_token_secret=access_secret,
             )
             response = client.create_tweet(text=tweet_text)
             tweet_id = response.data.get("id")
-            tweet_url = f"https://twitter.com/user/status/{tweet_id}" if tweet_id else None
+            tweet_url = (
+                f"https://twitter.com/user/status/{tweet_id}" if tweet_id else None
+            )
 
             return SocialResult(
                 platform=self.platform,
                 status="success",
                 url=tweet_url,
-                response=response.data
+                response=response.data,
             )
         except Exception as e:
             raise SocialSharerError(f"Twitter sharing failed: {str(e)}")
+
 
 class LinkedInSharer(BaseSocialSharer):
     platform = "linkedin"
 
     def share(self, title: str, post_url: str, tags: list[str]) -> SocialResult:
         access_token = os.getenv("LINKEDIN_ACCESS_TOKEN")
-        person_urn = os.getenv("LINKEDIN_PERSON_URN") # e.g., urn:li:person:123456789
+        person_urn = os.getenv("LINKEDIN_PERSON_URN")  # e.g., urn:li:person:123456789
 
         if not access_token or not person_urn:
-            raise SocialSharerError("LinkedIn API credentials (token or URN) missing in environment.")
+            raise SocialSharerError(
+                "LinkedIn API credentials (token or URN) missing in environment."
+            )
 
         hashtags = " ".join([f"#{t.replace(' ', '')}" for t in tags[:3]])
-        post_text = f"I just published a new LeetCode solution!\n\n{title}\n\n{hashtags}"
+        post_text = (
+            f"I just published a new LeetCode solution!\n\n{title}\n\n{hashtags}"
+        )
 
         headers = {
             "Authorization": f"Bearer {access_token}",
             "X-Restli-Protocol-Version": "2.0.0",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         payload = {
@@ -95,49 +105,58 @@ class LinkedInSharer(BaseSocialSharer):
             "lifecycleState": "PUBLISHED",
             "specificContent": {
                 "com.linkedin.ugc.ShareContent": {
-                    "shareCommentary": {
-                        "text": post_text
-                    },
+                    "shareCommentary": {"text": post_text},
                     "shareMediaCategory": "ARTICLE",
                     "media": [
                         {
                             "status": "READY",
                             "originalUrl": post_url,
-                            "title": {
-                                "text": title
-                            }
+                            "title": {"text": title},
                         }
-                    ]
+                    ],
                 }
             },
-            "visibility": {
-                "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
-            }
+            "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
         }
 
         try:
-            response = requests.post("https://api.linkedin.com/v2/ugcPosts", headers=headers, json=payload, timeout=20)
+            response = requests.post(
+                "https://api.linkedin.com/v2/ugcPosts",
+                headers=headers,
+                json=payload,
+                timeout=20,
+            )
             if response.status_code in (200, 201):
                 data = response.json()
                 post_id = data.get("id")
-                linkedin_url = f"https://www.linkedin.com/feed/update/{post_id}" if post_id else None
+                linkedin_url = (
+                    f"https://www.linkedin.com/feed/update/{post_id}"
+                    if post_id
+                    else None
+                )
                 return SocialResult(
                     platform=self.platform,
                     status="success",
                     url=linkedin_url,
-                    response=data
+                    response=data,
                 )
             else:
-                raise SocialSharerError(f"LinkedIn API Error {response.status_code}: {response.text}")
+                raise SocialSharerError(
+                    f"LinkedIn API Error {response.status_code}: {response.text}"
+                )
         except requests.RequestException as e:
             raise SocialSharerError(f"LinkedIn network error: {str(e)}")
+
 
 SHARERS: dict[str, BaseSocialSharer] = {
     "twitter": TwitterSharer(),
     "linkedin": LinkedInSharer(),
 }
 
-def share_to_platforms(title: str, post_url: str, tags: list[str] | None = None) -> list[dict[str, Any]]:
+
+def share_to_platforms(
+    title: str, post_url: str, tags: list[str] | None = None
+) -> list[dict[str, Any]]:
     clean_tags = [
         tag.strip().lower().replace(" ", "-")
         for tag in (tags or ["leetcode", "dsa"])
@@ -148,16 +167,10 @@ def share_to_platforms(title: str, post_url: str, tags: list[str] | None = None)
 
     for platform_name, sharer in SHARERS.items():
         try:
-            results.append(
-                sharer.share(title, post_url, clean_tags)
-            )
+            results.append(sharer.share(title, post_url, clean_tags))
         except SocialSharerError as exc:
             results.append(
-                SocialResult(
-                    platform=platform_name,
-                    status="error",
-                    message=str(exc)
-                )
+                SocialResult(platform=platform_name, status="error", message=str(exc))
             )
 
     return [r.as_dict() for r in results]

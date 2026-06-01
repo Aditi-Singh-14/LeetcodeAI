@@ -11,6 +11,7 @@ from alerts.twilio_service import send_whatsapp_message
 mongo_client = motor.motor_asyncio.AsyncIOMotorClient(os.getenv("MONGODB_URI"))
 db = mongo_client.leetcodeai
 
+
 async def _check_unsolved_users_async():
     # Fetch all opted-in users from preferences
     cursor = db.preferences.find({"is_opted_in": True})
@@ -26,9 +27,9 @@ async def _check_unsolved_users_async():
 
         # Check if there is a blog post created today
         today_str = today.isoformat()
-        solved_today_count = await db.problem_info.count_documents({
-            "date": {"$regex": f"^{today_str}"}
-        })
+        solved_today_count = await db.problem_info.count_documents(
+            {"date": {"$regex": f"^{today_str}"}}
+        )
         has_solved = solved_today_count > 0
 
         # Also check Leetcode submissions
@@ -45,22 +46,30 @@ async def _check_unsolved_users_async():
                       }
                     }
                     """
-                    return requests.post("https://leetcode.com/graphql", json={
-                        "query": query,
-                        "variables": {"username": lc_username, "limit": 10}
-                    }, timeout=10).json()
+                    return requests.post(
+                        "https://leetcode.com/graphql",
+                        json={
+                            "query": query,
+                            "variables": {"username": lc_username, "limit": 10},
+                        },
+                        timeout=10,
+                    ).json()
 
                 data = await asyncio.to_thread(check_lc)
                 submissions = data.get("data", {}).get("recentAcSubmissionList", [])
 
                 # Check if any submission has a timestamp from today (UTC)
-                midnight_utc = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+                midnight_utc = datetime.now(timezone.utc).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
                 midnight_timestamp = int(midnight_utc.timestamp())
 
                 for sub in submissions:
                     if int(sub["timestamp"]) >= midnight_timestamp:
                         has_solved = True
-                        print(f"Found recent Leetcode submission today for {lc_username}!")
+                        print(
+                            f"Found recent Leetcode submission today for {lc_username}!"
+                        )
                         break
             except Exception as e:
                 print(f"Failed to check Leetcode for {lc_username}:", e)
@@ -87,7 +96,9 @@ async def _check_unsolved_users_async():
                 try:
                     audio_file = generate_audio(message)
 
-                    backend_url = os.getenv("BACKEND_URL", "https://leetcodeai-backend.onrender.com")
+                    backend_url = os.getenv(
+                        "BACKEND_URL", "https://leetcodeai-backend.onrender.com"
+                    )
                     if backend_url.endswith("/"):
                         backend_url = backend_url[:-1]
 
@@ -95,18 +106,25 @@ async def _check_unsolved_users_async():
                     print(f"Audio available at: {audio_url}, making voice call...")
 
                     call_sid = make_call(phone, audio_url=audio_url)
-                    print(f"Call placed successfully with ElevenLabs to {phone}, SID: {call_sid}")
+                    print(
+                        f"Call placed successfully with ElevenLabs to {phone}, SID: {call_sid}"
+                    )
                 except Exception as el_err:
                     print("ElevenLabs failed (possibly Free Tier VPN block):", el_err)
                     print("Falling back to standard Twilio Robot Voice...")
                     call_sid = make_call(phone, text_to_say=message)
-                    print(f"Call placed successfully with Twilio TTS to {phone}, SID: {call_sid}")
+                    print(
+                        f"Call placed successfully with Twilio TTS to {phone}, SID: {call_sid}"
+                    )
 
             except Exception as e:
                 print(f"Failed to generate audio or make call to {phone}:", e)
 
         else:
-            print(f"User {phone} has already solved {solved_today_count} problems today!")
+            print(
+                f"User {phone} has already solved {solved_today_count} problems today!"
+            )
+
 
 def check_unsolved_users():
     asyncio.run(_check_unsolved_users_async())

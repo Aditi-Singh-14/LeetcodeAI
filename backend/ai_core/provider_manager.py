@@ -9,7 +9,6 @@ logger = logging.getLogger(__name__)
 
 
 class ProviderManager:
-
     def __init__(self):
 
         self.providers = {
@@ -37,11 +36,7 @@ class ProviderManager:
 
         provider_order = [
             selected_provider,
-            *[
-                provider
-                for provider in fallback_order
-                if provider != selected_provider
-            ],
+            *[provider for provider in fallback_order if provider != selected_provider],
         ]
 
         return provider_order
@@ -51,9 +46,7 @@ class ProviderManager:
         provider_class = self.providers.get(provider_name)
 
         if not provider_class:
-            raise Exception(
-                f"Unsupported AI provider: {provider_name}"
-            )
+            raise Exception(f"Unsupported AI provider: {provider_name}")
 
         return provider_class()
 
@@ -64,17 +57,13 @@ class ProviderManager:
         last_error = None
 
         for provider_name in provider_order:
-
             try:
-
                 logger.info(
                     "Trying provider: %s",
                     provider_name,
                 )
 
-                provider = self.get_provider(
-                    provider_name
-                )
+                provider = self.get_provider(provider_name)
 
                 response = provider.generate(prompt)
 
@@ -86,7 +75,6 @@ class ProviderManager:
                 return response
 
             except Exception as e:
-
                 logger.error(
                     "Provider %s failed: %s",
                     provider_name,
@@ -97,7 +85,4 @@ class ProviderManager:
 
                 continue
 
-        raise Exception(
-            f"All AI providers failed. "
-            f"Last error: {last_error}"
-        )
+        raise Exception(f"All AI providers failed. Last error: {last_error}")
