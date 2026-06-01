@@ -145,12 +145,6 @@ class TestGenerateBlogRoute:
         self, client, mock_generate_blog, mock_post_to_platform
     ):
         """Verify generate_blog is actually called once."""
-        payload = {
-            "title": "Two Sum",
-            "description": "Given an array...",
-            "code": "def twoSum(): pass",
-            "author": "testuser",
-        }
 
         mock_generate_blog.assert_called_once()
 
