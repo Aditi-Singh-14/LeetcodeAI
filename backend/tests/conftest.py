@@ -22,14 +22,71 @@ from fastapi.testclient import TestClient
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
-class FakePreferencesCollection:
+class FakeCursor:
+    def __init__(self, records=None) -> None:
+        self.records = records or []
+
+    def sort(self, *args, **kwargs):
+        return self
+
+    def skip(self, *args, **kwargs):
+        return self
+
+    def limit(self, *args, **kwargs):
+        return self
+
+    def __aiter__(self):
+        self._iter = iter(self.records)
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._iter)
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
+
+
+class FakeCollection:
     def __init__(self) -> None:
-        self.update_one = AsyncMock()
+        self.records: list[dict] = []
+        self.update_one = AsyncMock(side_effect=self._update_one)
+        self.insert_one = AsyncMock(side_effect=self._insert_one)
+        self.find_one = AsyncMock(side_effect=self._find_one)
+        self.count_documents = AsyncMock(return_value=0)
+
+    async def _find_one(self, query, *args, **kwargs):
+        for record in self.records:
+            if all(record.get(key) == value for key, value in query.items()):
+                return dict(record)
+        return None
+
+    async def _insert_one(self, record, *args, **kwargs):
+        self.records.append(dict(record))
+        return Mock(inserted_id=record.get("id"))
+
+    async def _update_one(self, query, update, upsert=False, *args, **kwargs):
+        payload = update.get("$set", update)
+        for record in self.records:
+            if all(record.get(key) == value for key, value in query.items()):
+                record.update(payload)
+                return Mock(matched_count=1, modified_count=1)
+        if upsert:
+            self.records.append({**query, **payload})
+        return Mock(matched_count=0, modified_count=0)
+
+    def find(self, *args, **kwargs):
+        return FakeCursor(self.records)
+
+    def aggregate(self, *args, **kwargs):
+        return FakeCursor([])
 
 
 class FakeDatabase:
     def __init__(self) -> None:
-        self.preferences = FakePreferencesCollection()
+        self.preferences = FakeCollection()
+        self.problem_info = FakeCollection()
+        self.users = FakeCollection()
+        self.integration_settings = FakeCollection()
 
 
 class FakeMotorClient:
