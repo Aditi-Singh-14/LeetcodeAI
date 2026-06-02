@@ -1,6 +1,5 @@
-from apscheduler.schedulers.background import BackgroundScheduler
-from pytz import timezone
-
+from services.reminder_scheduler import start_scheduler, BackgroundScheduler
+from time import timezone
 from alerts.progress_checker import check_unsolved_users
 
 scheduler = BackgroundScheduler()
@@ -11,3 +10,4 @@ scheduler.add_job(
 )
 
 scheduler.start()
+start_scheduler()
