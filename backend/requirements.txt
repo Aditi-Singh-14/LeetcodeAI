@@ -2,16 +2,19 @@ fastapi
 uvicorn[standard]
 pydantic
 google-genai
-openai
-requests
+
 httpx
+requests
 python-dotenv
 twilio
 elevenlabs
 apscheduler
+celery[redis]
 motor
 pytz
 pymongo
+tweepy
+openai
 
 # --- Test & Dev Dependencies ---
 pytest
@@ -19,4 +22,4 @@ pytest-asyncio
 pytest-mock
 responses
 ruff
-tweepy==4.14.0
+
