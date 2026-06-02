@@ -165,7 +165,7 @@ class TestGenerateBlogRoute:
             "author": "testuser",
             "difficulty": "Easy",
         }
-        client.post("/generate-blog", json=payload)
+        client.post("/generate-blog", json=payload, headers=TEST_HEADERS)
         problem = mock_generate_blog.call_args.args[0]
         assert problem.difficulty == "Easy"
 
@@ -186,6 +186,43 @@ class TestGenerateBlogRoute:
             headers=TEST_HEADERS,
         )
         mock_post_to_platform.assert_called_once()
+
+
+class TestPublishBlogRoute:
+    def test_happy_path_returns_success(self, client, mock_post_to_platform):
+        """Publishing edited blog succeeds and returns success body."""
+        payload = {
+            "title": "Two Sum",
+            "content": "# Solved Two Sum!",
+            "author": "testuser",
+            "platforms": ["devto"],
+            "publish_as_draft": False,
+        }
+        response = client.post(
+            "/publish-blog",
+            json=payload,
+            headers=TEST_HEADERS,
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "success"
+        assert body["data"]["platforms"][0]["status"] == "success"
+        assert "dev.to" in body["data"]["platforms"][0]["url"]
+        mock_post_to_platform.assert_called_once()
+
+    def test_missing_required_fields_returns_422(self, client):
+        """Pydantic rejects publish-blog payloads missing required fields."""
+        payload = {
+            "title": "Two Sum",
+            # content is missing
+        }
+
+        response = client.post(
+            "/publish-blog",
+            json=payload,
+            headers=TEST_HEADERS,
+        )
+        assert response.status_code == 422
 
 
 class TestReminderRoutes:
