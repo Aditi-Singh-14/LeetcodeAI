@@ -165,7 +165,7 @@ class TestGenerateBlogRoute:
             "author": "testuser",
             "difficulty": "Easy",
         }
-        response = client.post("/generate-blog", json=payload, headers=TEST_HEADERS)
+        client.post("/generate-blog", json=payload, headers=TEST_HEADERS)
         problem = mock_generate_blog.call_args.args[0]
         assert problem.difficulty == "Easy"
 
