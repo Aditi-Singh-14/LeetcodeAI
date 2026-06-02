@@ -54,7 +54,7 @@ class BasePublisher:
         raise NotImplementedError
 
     @staticmethod
-    def _post_with_retries(
+    async def _post_with_retries(
         url: str,
         *,
         headers: dict[str, str],
