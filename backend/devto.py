@@ -1,11 +1,9 @@
 import asyncio
 import os
-
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
-import requests
 from dotenv import load_dotenv
 
 load_dotenv()
