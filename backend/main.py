@@ -4,6 +4,7 @@ import hmac
 import json
 import os
 import secrets
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Optional
@@ -11,11 +12,14 @@ from typing import Annotated, Any, Optional
 import motor.motor_asyncio
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from twilio.rest import Client
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # --- UPDATED AI PATH ---
 from ai_core.blog_generator import generate_blog
@@ -41,6 +45,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="LeetLog AI", version="1.0.0", lifespan=lifespan)
+
+# Initialize the rate limiter using our custom safe IP function
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -75,6 +84,7 @@ class Problem(BaseModel):
     description: str
     code: str
     author: str = "Anonymous Developer"
+    difficulty: str | None = None
     client_time: str | None = None  # Optional client time string
     custom_prompt: str | None = None  # custom_prompt for the user
     platforms: list[str] | None = None
@@ -97,6 +107,8 @@ def require_user(x_user_email: Optional[str]) -> str:
             status_code=401, detail="Missing or invalid X-User-Email header."
         )
     return x_user_email.lower().strip()
+
+
 class AuthCredentials(BaseModel):
     name: str | None = None
     email: str
@@ -234,7 +246,9 @@ async def get_optional_user(
 
 
 async def _settings_for_user(user_id: str) -> dict[str, Any]:
-    settings_doc = await db.integration_settings.find_one({"user_id": user_id}, {"_id": 0})
+    settings_doc = await db.integration_settings.find_one(
+        {"user_id": user_id}, {"_id": 0}
+    )
     if not settings_doc:
         return IntegrationSettings().model_dump()
     settings_doc.pop("user_id", None)
@@ -259,17 +273,23 @@ def _connected(settings_doc: dict[str, Any]) -> dict[str, bool]:
 
 def _token_for(user: dict[str, Any]) -> str:
     exp = datetime.now(timezone.utc) + timedelta(hours=TOKEN_TTL_HOURS)
-    return _sign_token({"sub": user["id"], "email": user["email"], "exp": exp.timestamp()})
+    return _sign_token(
+        {"sub": user["id"], "email": user["email"], "exp": exp.timestamp()}
+    )
 
 
 @app.post("/auth/register", response_model=AuthResponse, status_code=201)
 async def register(credentials: AuthCredentials):
     email = credentials.email.strip().lower()
     if len(credentials.password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+        raise HTTPException(
+            status_code=400, detail="Password must be at least 8 characters."
+        )
     existing = await db.users.find_one({"email": email}, {"_id": 0})
     if existing:
-        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+        raise HTTPException(
+            status_code=409, detail="An account with this email already exists."
+        )
 
     salt, password_hash = _hash_password(credentials.password)
     user = {
@@ -313,7 +333,9 @@ async def get_integration_settings(
     current_user: Annotated[dict[str, Any], Depends(get_current_user)],
 ):
     settings_doc = await _settings_for_user(current_user["id"])
-    return IntegrationSettingsResponse(**settings_doc, connected=_connected(settings_doc))
+    return IntegrationSettingsResponse(
+        **settings_doc, connected=_connected(settings_doc)
+    )
 
 
 @app.put("/settings/integrations", response_model=IntegrationSettingsResponse)
@@ -351,9 +373,9 @@ async def update_integration_settings(
             upsert=True,
         )
 
-    return IntegrationSettingsResponse(**settings_doc, connected=_connected(settings_doc))
-
-
+    return IntegrationSettingsResponse(
+        **settings_doc, connected=_connected(settings_doc)
+    )
 
 
 # -----------------------------
@@ -368,7 +390,9 @@ def health_check():
 # Blog Generator Endpoint
 # -----------------------------
 @app.post("/generate-blog")
+@limiter.limit("5/minute")
 async def create_blog(
+    request: Request,
     problem: Problem,
     x_user_email: Optional[str] = Header(default=None),
     current_user: Annotated[dict[str, Any] | None, Depends(get_optional_user)] = None,
