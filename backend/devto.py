@@ -302,3 +302,4 @@ def post_to_platform(title: str, content: str) -> dict[str, Any]:
     if first["status"] != "success":
         raise Exception(first.get("message", "Dev.to publishing failed."))
     return first.get("response", first)
+
