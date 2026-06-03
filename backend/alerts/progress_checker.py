@@ -238,6 +238,5 @@ async def enqueue_due_reminders(now_utc: datetime | None = None) -> dict:
 
     return {"queued": queued, "skipped": skipped, "due_users": len(due_users)}
 
-
 def check_unsolved_users() -> dict:
     return asyncio.run(enqueue_due_reminders())
