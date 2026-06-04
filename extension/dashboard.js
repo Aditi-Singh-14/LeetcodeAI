@@ -1,4 +1,14 @@
 const API_BASE_URL = "https://leetcodeai-backend.onrender.com";
+//const API_BASE_URL = "http://localhost:10000";
+
+//fixes timezone for IST and all non-UTC users
+function getLocalDateStr(date) {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 const colors = { devto:'#3b49df', hashnode:'#2962ff', medium:'#00ab6c', webhook:'#f7a01a' };
 
@@ -16,17 +26,25 @@ function escapeHTML(str) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  setLoading(true);
-  fetchStatsFromBackend()
-    .catch(() => {
-      showBanner("Couldn't reach backend — showing local data.");
-      return loadFromLocalStorage();
-    })
-    .finally(() => setLoading(false));
+  chrome.storage.local.get({ userEmail: null }, ({ userEmail }) => {
+    if (!userEmail) {
+      showBanner('No email set — open the extension and enter your email first.');
+      return;
+    }
+    setLoading(true);
+    fetchStatsFromBackend(userEmail)
+      .catch(() => {
+        showBanner("Couldn't reach backend — showing local data.");
+        return loadFromLocalStorage(userEmail);
+      })
+      .finally(() => setLoading(false));
+  });
 });
 
-async function fetchStatsFromBackend() {
-  const res = await fetch(`${API_BASE_URL}/dashboard/stats`);
+async function fetchStatsFromBackend(email) {
+  const res = await fetch(`${API_BASE_URL}/dashboard/stats`, {
+    headers: { 'X-User-Email': email }
+  });
   if (!res.ok) throw new Error('Bad response');
   const { total_posts, platform_counts, week_activity, recent } = await res.json();
 
@@ -41,10 +59,11 @@ async function fetchStatsFromBackend() {
   renderHistory(recent);
 }
 
-function loadFromLocalStorage() {
+function loadFromLocalStorage(email) {
   return new Promise(resolve => {
-    chrome.storage.local.get({ publishHistory: [] }, ({ publishHistory }) => {
-      renderDashboard(publishHistory);
+    const key = `publishHistory_${email}`;
+    chrome.storage.local.get({ [key]: [] }, (res) => {
+      renderDashboard(res[key] || []);
       resolve();
     });
   });
@@ -66,7 +85,7 @@ function calculateStreakFromWeekMap(weekMap) {
   for (let i = 0; i < 7; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const key = d.toISOString().slice(0, 10);
+    const key = getLocalDateStr(d);
     if (weekMap[key]) streak++;
     else if (i > 0) break; 
   }
@@ -80,7 +99,7 @@ function renderWeekGridFromMap(weekMap) {
   grid.innerHTML = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (6 - i));
-    const key = d.toISOString().slice(0, 10);
+    const key = getLocalDateStr(d);
     const count = weekMap[key] || 0;
     return `<div class="week-day">
       <div class="week-label">${days[d.getDay()]}</div>
@@ -117,7 +136,7 @@ function renderDashboard(history) {
   renderHistory(history);
 }
 
-function getDateStr(d) { return new Date(d).toISOString().slice(0, 10); }
+function getDateStr(d) { return getLocalDateStr(new Date(d)); }
 
 function calculateStreak(history) {
   if (!history.length) return 0;
@@ -141,7 +160,7 @@ function renderWeekGrid(history) {
   const grid = document.getElementById('weekGrid');
   grid.innerHTML = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(); d.setDate(d.getDate() - (6 - i));
-    const key = d.toISOString().slice(0, 10);
+    const key = getLocalDateStr(d);
     const count = history.filter(h => getDateStr(h.date) === key).length;
     return `<div class="week-day">
       <div class="week-label">${days[d.getDay()]}</div>

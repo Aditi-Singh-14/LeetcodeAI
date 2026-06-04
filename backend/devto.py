@@ -10,6 +10,7 @@ load_dotenv()
 
 DEFAULT_TAGS = ["leetcode", "dsa", "programming", "tutorial"]
 
+
 @dataclass(frozen=True)
 class PublishResult:
     platform: str
@@ -25,10 +26,10 @@ class PublishResult:
         }
         if self.url:
             payload["url"] = self.url
+        if self.response is not None:
+            payload["response"] = self.response
         if self.message:
             payload["message"] = self.message
-        if self.response:
-            payload["response"] = self.response
         return payload
 
 
@@ -40,7 +41,13 @@ class BasePublisher:
     platform = "base"
 
     async def publish(
-        self, title: str, content: str, *, tags: list[str], published: bool
+        self,
+        title: str,
+        content: str,
+        *,
+        tags: list[str],
+        published: bool,
+        credentials: dict[str, Any] | None = None,
     ) -> PublishResult:
         raise NotImplementedError
 
@@ -56,7 +63,9 @@ class BasePublisher:
         async with httpx.AsyncClient() as client:
             for attempt in range(retries + 1):
                 try:
-                    response = await client.post(url, headers=headers, json=payload, timeout=20.0)
+                    response = await client.post(
+                        url, headers=headers, json=payload, timeout=20.0
+                    )
                     if response.status_code in (200, 201):
                         return response.json()
                     if attempt == retries:
@@ -65,7 +74,9 @@ class BasePublisher:
                         )
                 except httpx.RequestError as exc:
                     if attempt == retries:
-                        raise PublisherError(f"{platform} network error: {exc}") from exc
+                        raise PublisherError(
+                            f"{platform} network error: {exc}"
+                        ) from exc
                 await asyncio.sleep(1)
             raise PublisherError(f"{platform} API request failed.")
 
@@ -74,12 +85,18 @@ class DevToPublisher(BasePublisher):
     platform = "devto"
 
     async def publish(
-        self, title: str, content: str, *, tags: list[str], published: bool
+        self,
+        title: str,
+        content: str,
+        *,
+        tags: list[str],
+        published: bool,
+        credentials: dict[str, Any] | None = None,
     ) -> PublishResult:
-        api_key = os.getenv("DEVTO_API_KEY")
+        api_key = (credentials or {}).get("devto_api_key") or os.getenv("DEVTO_API_KEY")
         if not api_key:
             raise PublisherError(
-                "Dev.to API key missing. Please set DEVTO_API_KEY in .env."
+                "Dev.to API key missing. Add it in Settings > Integrations."
             )
 
         response = await self._post_with_retries(
@@ -110,10 +127,19 @@ class HashnodePublisher(BasePublisher):
     platform = "hashnode"
 
     async def publish(
-        self, title: str, content: str, *, tags: list[str], published: bool
+        self,
+        title: str,
+        content: str,
+        *,
+        tags: list[str],
+        published: bool,
+        credentials: dict[str, Any] | None = None,
     ) -> PublishResult:
-        token = os.getenv("HASHNODE_TOKEN")
-        publication_id = os.getenv("HASHNODE_PUBLICATION_ID")
+        credentials = credentials or {}
+        token = credentials.get("hashnode_token") or os.getenv("HASHNODE_TOKEN")
+        publication_id = credentials.get("hashnode_publication_id") or os.getenv(
+            "HASHNODE_PUBLICATION_ID"
+        )
         if not token or not publication_id:
             raise PublisherError(
                 "Hashnode publishing requires HASHNODE_TOKEN and HASHNODE_PUBLICATION_ID."
@@ -130,36 +156,39 @@ class HashnodePublisher(BasePublisher):
           }
         }
         """
-        response = await self._post_with_retries(
-            "https://gql.hashnode.com/",
-            headers={
-                "Authorization": token,
-                "Content-Type": "application/json",
-            },
-            payload={
-                "query": mutation,
-                "variables": {
-                    "input": {
-                        "publicationId": publication_id,
-                        "title": f"LeetCode Solution: {title}",
-                        "contentMarkdown": content,
-                        "tags": [{"name": tag, "slug": tag} for tag in tags],
-                        "draft": not published,
-                    }
-                },
-            },
-            platform="Hashnode",
-        )
-
-        # GraphQL APIs return HTTP 200 even when an operation fails.
-        # Detect and raise on GraphQL-level errors before treating the
-        # response as a successful publish.
-        graphql_errors = response.get("errors")
-        if graphql_errors:
-            first_error = graphql_errors[0] if isinstance(graphql_errors[0], dict) else {}
-            message = first_error.get("message", "Unknown Hashnode GraphQL error")
-            raise PublisherError(f"Hashnode publish failed: {message}")
-
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                http_response = await client.post(
+                    "https://gql.hashnode.com/",
+                    headers={
+                        "Authorization": token,
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "query": mutation,
+                        "variables": {
+                            "input": {
+                                "publicationId": publication_id,
+                                "title": f"LeetCode Solution: {title}",
+                                "contentMarkdown": content,
+                                "tags": [{"name": tag, "slug": tag} for tag in tags],
+                                "draft": not published,
+                            }
+                        },
+                    },
+                )
+            if http_response.status_code not in (200, 201):
+                raise PublisherError(
+                    f"Hashnode API Error {http_response.status_code}: {http_response.text}"
+                )
+            response = http_response.json()
+        except httpx.RequestError as exc:
+            raise PublisherError(f"Hashnode network error: {exc}") from exc
+        # GraphQL always returns HTTP 200; check the response-level errors field.
+        gql_errors = response.get("errors")
+        if gql_errors:
+            message = gql_errors[0].get("message", "Hashnode GraphQL error")
+            raise PublisherError(f"Hashnode GraphQL error: {message}")
         post = response.get("data", {}).get("publishPost", {}).get("post", {})
         return PublishResult(
             platform=self.platform,
@@ -173,10 +202,17 @@ class MediumPublisher(BasePublisher):
     platform = "medium"
 
     async def publish(
-        self, title: str, content: str, *, tags: list[str], published: bool
+        self,
+        title: str,
+        content: str,
+        *,
+        tags: list[str],
+        published: bool,
+        credentials: dict[str, Any] | None = None,
     ) -> PublishResult:
-        token = os.getenv("MEDIUM_TOKEN")
-        user_id = os.getenv("MEDIUM_USER_ID")
+        credentials = credentials or {}
+        token = credentials.get("medium_token") or os.getenv("MEDIUM_TOKEN")
+        user_id = credentials.get("medium_user_id") or os.getenv("MEDIUM_USER_ID")
         if not token or not user_id:
             raise PublisherError(
                 "Medium publishing requires MEDIUM_TOKEN and MEDIUM_USER_ID."
@@ -211,9 +247,17 @@ class WebhookPublisher(BasePublisher):
     platform = "webhook"
 
     async def publish(
-        self, title: str, content: str, *, tags: list[str], published: bool
+        self,
+        title: str,
+        content: str,
+        *,
+        tags: list[str],
+        published: bool,
+        credentials: dict[str, Any] | None = None,
     ) -> PublishResult:
-        webhook_url = os.getenv("BLOG_WEBHOOK_URL")
+        webhook_url = (credentials or {}).get("blog_webhook_url") or os.getenv(
+            "BLOG_WEBHOOK_URL"
+        )
         if not webhook_url:
             raise PublisherError("Personal blog publishing requires BLOG_WEBHOOK_URL.")
 
@@ -268,6 +312,7 @@ async def publish_to_platforms(
     platforms: list[str] | None = None,
     published: bool = True,
     tags: list[str] | None = None,
+    credentials: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     selected_platforms = normalize_platforms(platforms)
     clean_tags = [
@@ -279,14 +324,20 @@ async def publish_to_platforms(
     results: list[PublishResult] = []
     for platform in selected_platforms:
         try:
-            results.append(
-                await PUBLISHERS[platform].publish(
-                    title,
-                    content,
-                    tags=clean_tags,
-                    published=published,
-                )
+            publisher = PUBLISHERS[platform]
+            publish_call = publisher.publish(
+                title,
+                content,
+                tags=clean_tags,
+                published=published,
+                credentials=credentials,
             )
+            # HashnodePublisher.publish is async; await it if it's a coroutine
+            if asyncio.iscoroutine(publish_call):
+                result = await publish_call
+            else:
+                result = publish_call
+            results.append(result)
         except PublisherError as exc:
             results.append(
                 PublishResult(
@@ -301,8 +352,12 @@ async def publish_to_platforms(
 
 async def post_to_platform(title: str, content: str) -> dict[str, Any]:
     """Backward-compatible Dev.to-only wrapper used by older integrations."""
-    results = await publish_to_platforms(title, content, platforms=["devto"])
-    first = results[0]
-    if first["status"] != "success":
-        raise Exception(first.get("message", "Dev.to publishing failed."))
-    return first.get("response", first)
+    result = await DevToPublisher().publish(
+        title,
+        content,
+        tags=DEFAULT_TAGS,
+        published=True,
+    )
+    if result.status != "success":
+        raise Exception(result.message or "Dev.to publishing failed.")
+    return result.response or result.as_dict()
