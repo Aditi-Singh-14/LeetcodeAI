@@ -4,15 +4,9 @@ import os
 
 import openai
 from dotenv import load_dotenv
-from fastapi import HTTPException, APIRouter
+from fastapi import APIRouter, HTTPException
+import openai
 from openai import OpenAI
-
-from .base import AIProvider
-
-router = APIRouter()
-
-# Global tracking variable to lock execution per endpoint context
-is_processing_generation = False
 
 load_dotenv()
 
@@ -43,17 +37,22 @@ class OpenAIProvider(AIProvider):
         self.models = tuple(
             dict.fromkeys(model for model in (preferred_model, fallback_model) if model)
         )
+        
+        # Authentic production client configuration
         self.client = OpenAI(
             api_key=api_key,
             max_retries=SDK_MAX_RETRIES,
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
+        
+        # Safely bind the concurrency lock to the provider instance context
+        import asyncio
+        self._lock = asyncio.Lock()
 
     @staticmethod
     def clean_response(text: str) -> str:
         """Remove an accidental outer Markdown wrapper without harming code fences."""
         text = text.strip()
-
         for opening_fence in ("```markdown", "```"):
             for line_break in ("\r\n", "\n"):
                 prefix = f"{opening_fence}{line_break}"
@@ -136,26 +135,43 @@ is_processing_generation = False
 
 @router.post("/generate-blog")
 async def generate_blog(payload: dict):
-    global is_processing_generation
-    
-    # 1. Guard: Check if a request is already running inside the AI loop
-    if is_processing_generation:
+if self._lock.locked():
         raise HTTPException(
             status_code=429, 
             detail="A blog generation request is already in progress. Please wait."
         )
-        
-    try:
-        # 2. Acquire lock
-        is_processing_generation = True
-        
-        result = await generate_blog_content_pipeline(payload)
-        return {
-            "status": "success", 
-            "message": "Blog created successfully",
-            "data": result
-        }
-        
-    finally:
-        # 4. Release the lock safely even if the LLM crashes or times out
-        is_processing_generation = False
+
+    async with self._lock:
+        user_prompt = payload.get("prompt", "Write a technical blog post about solving LeetCode problems efficiently.")
+        model_name = payload.get("model", "gpt-4o")
+
+        try:
+            # Run the synchronous OpenAI SDK call inside a thread pool 
+            # to keep the FastAPI async event loop completely non-blocking
+            import asyncio
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are LeetLog AI, an expert technical writer and software engineer. Generate a structured, markdown-formatted blog post based on the problem description provided."
+                        },
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.7
+                )
+            )
+
+            return {
+                "status": "success",
+                "message": "Blog created successfully",
+                "data": response.choices[0].message.content
+            }
+
+        except openai.OpenAIError as e:
+            raise HTTPException(status_code=502, detail=f"OpenAI service error: {str(e)}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Unexpected internal error: {str(e)}")
