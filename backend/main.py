@@ -12,6 +12,8 @@ import motor.motor_asyncio
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -425,7 +427,7 @@ async def create_blog(
     user_settings = await _settings_for_user(current_user["id"]) if current_user else {}
 
     try:
-        blog_content = generate_blog(problem, credentials=user_settings)
+        blog_content = await run_in_threadpool(generate_blog, problem, credentials=user_settings)
     except Exception as e:
         return {"status": "error", "message": f"AI provider failure: {str(e)}"}
 
@@ -442,9 +444,7 @@ async def create_blog(
         overall_status = (
             "success"
             if len(successful) == len(platform_results)
-            else "partial_success"
-            if successful
-            else "error"
+            else "partial_success" if successful else "error"
         )
     except Exception as e:
         return {"status": "error", "message": f"Publishing failure: {str(e)}"}
@@ -498,6 +498,105 @@ async def create_blog(
         "status": overall_status,
         "data": {
             "blog_content": blog_content,
+            "platforms": platform_results,
+            "social": social_results,
+        },
+    }
+
+
+# -----------------------------
+# Publish Blog Endpoint
+# -----------------------------
+class EditedBlog(BaseModel):
+    title: str
+    content: str
+    author: str = "Anonymous Developer"
+    platforms: list[str] | None = None
+    publish_as_draft: bool = False
+    share_to_social: bool = True
+    tags: list[str] | None = None
+
+
+@app.post("/publish-blog")
+async def publish_blog(
+    blog: EditedBlog,
+    x_user_email: Optional[str] = Header(default=None),
+    current_user: Annotated[dict[str, Any] | None, Depends(get_optional_user)] = None,
+):
+    """
+    Accepts an edited blog and:
+    1. Publishes it to one or more configured platforms
+    """
+    user_email = require_user(x_user_email)
+
+    user_settings = await _settings_for_user(current_user["id"]) if current_user else {}
+
+    try:
+        platform_results = await publish_to_platforms(
+            blog.title,
+            blog.content,
+            platforms=blog.platforms or user_settings.get("publish_platforms"),
+            published=not blog.publish_as_draft,
+            tags=blog.tags,
+            credentials=user_settings,
+        )
+        successful = [r for r in platform_results if r.get("status") == "success"]
+        overall_status = (
+            "success"
+            if len(successful) == len(platform_results)
+            else "partial_success" if successful else "error"
+        )
+    except Exception as e:
+        return {"status": "error", "message": f"Publishing failure: {str(e)}"}
+
+    try:
+        record = PublishRecord(
+            title=blog.title,
+            date=datetime.now(timezone.utc).isoformat(),
+            platforms=[r["platform"] for r in successful],
+            status=overall_status,
+            author=blog.author,
+            user_email=user_email,
+        )
+
+        await db.problem_info.update_one(
+            {
+                "title": blog.title,
+                "author": blog.author,
+                "user_email": user_email,
+            },
+            {
+                "$set": record.model_dump(),
+            },
+            upsert=True,
+        )
+
+    except Exception as e:
+        print(f"Database logging failed: {e}")
+
+    social_results = []
+    if blog.share_to_social and successful:
+        post_url = None
+        for res in successful:
+            if res.get("url"):
+                post_url = res["url"]
+                break
+
+        if post_url:
+            try:
+                social_results = share_to_platforms(
+                    title=blog.title,
+                    post_url=post_url,
+                    tags=blog.tags,
+                    credentials=user_settings,
+                )
+            except Exception as e:
+                print(f"Social sharing failed: {e}")
+
+    return {
+        "status": overall_status,
+        "data": {
+            "blog_content": blog.content,
             "platforms": platform_results,
             "social": social_results,
         },
@@ -715,3 +814,4 @@ async def unsubscribe(data: dict):
 # -----------------------------
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=10000, reload=True)
+
