@@ -420,11 +420,10 @@ async def create_blog(
 
     try:
         blog_content = await run_in_threadpool(generate_blog, problem, credentials=user_settings)
-        efficiency = await run_in_threadpool(
-            rate_code_efficiency,
+        efficiency = rate_code_efficiency(
             problem.title,
             problem.code,
-            problem.language or "python"   # ← passes real language, not hardcoded
+            problem.language or "python"
         )
     except Exception as e:
         return {"status": "error", "message": f"AI provider failure: {str(e)}"}

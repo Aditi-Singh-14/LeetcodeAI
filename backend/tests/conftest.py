@@ -196,7 +196,6 @@ def mock_generate_blog(app_module, mocker):
 def mock_rate_code_efficiency(app_module, mocker):
     return mocker.patch(
         "main.rate_code_efficiency",
-        new_callable=AsyncMock,
         return_value={
             "score": 8,
             "time_complexity": "O(n)",
