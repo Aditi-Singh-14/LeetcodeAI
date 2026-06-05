@@ -77,8 +77,9 @@ class Problem(BaseModel):
     code: str
     author: str = "Anonymous Developer"
     difficulty: str | None = None
-    client_time: str | None = None  # Optional client time string
-    custom_prompt: str | None = None  # custom_prompt for the user
+    language: str | None = None        
+    client_time: str | None = None
+    custom_prompt: str | None = None
     platforms: list[str] | None = None
     publish_as_draft: bool = False
     share_to_social: bool = True
@@ -417,6 +418,12 @@ async def create_blog(
 
     try:
         blog_content = await run_in_threadpool(generate_blog, problem, credentials=user_settings)
+        efficiency = await run_in_threadpool(
+            rate_code_efficiency,
+            problem.title,
+            problem.code,
+            problem.language or "python"   # ← passes real language, not hardcoded
+        )
     except Exception as e:
         return {"status": "error", "message": f"AI provider failure: {str(e)}"}
 
@@ -487,6 +494,7 @@ async def create_blog(
         "status": overall_status,
         "data": {
             "blog_content": blog_content,
+            "efficiency": efficiency, 
             "platforms": platform_results,
             "social": social_results,
         },
