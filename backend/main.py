@@ -408,8 +408,9 @@ async def create_blog(
     except Exception as e:
         return {"status": "error", "message": f"AI provider failure: {str(e)}"}
 
-    try:
-    suggested_tags = generate_tags(
+  try:
+    suggested_tags = await run_in_threadpool(
+        generate_tags,
         problem,
         blog_content,
         credentials=user_settings,
