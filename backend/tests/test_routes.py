@@ -24,7 +24,7 @@ class TestHealthRoutes:
 
 class TestGenerateBlogRoute:
     def test_happy_path_returns_success(
-        self, client, mock_generate_blog, mock_post_to_platform
+    self, client, mock_generate_blog, mock_post_to_platform, mock_rate_code_efficiency
     ):
         """Both Gemini and Dev.to succeed  expect success body."""
         payload = {
