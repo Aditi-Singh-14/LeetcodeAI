@@ -192,6 +192,18 @@ def mock_generate_blog(app_module, mocker):
         return_value="# Mock blog content",
     )
 
+@pytest.fixture
+def mock_rate_code_efficiency(app_module, mocker):
+    return mocker.patch(
+        "main.rate_code_efficiency",
+        return_value={
+            "score": 8,
+            "time_complexity": "O(n)",
+            "space_complexity": "O(1)",
+            "approach": "Mock approach",
+            "suggestion": "None",
+        },
+    )
 
 @pytest.fixture
 def mock_post_to_platform(app_module, mocker):
