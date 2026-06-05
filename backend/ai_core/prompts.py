@@ -61,7 +61,7 @@ def get_current_time(problem):
 
 
 def build_tag_prompt(problem, blog_content: str) -> str:
-    return f"""      
+    return f"""
 
 You are an SEO and technical content expert.
 
