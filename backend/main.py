@@ -11,7 +11,10 @@ from typing import Annotated, Any, Optional
 import motor.motor_asyncio
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status, Request
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -42,6 +45,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="LeetLog AI", version="1.0.0", lifespan=lifespan)
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -382,7 +389,9 @@ def health_check():
 # Blog Generator Endpoint
 # -----------------------------
 @app.post("/generate-blog")
+@limiter.limit("15/hour")
 async def create_blog(
+    request: Request,
     problem: Problem,
     x_user_email: Optional[str] = Header(default=None),
     current_user: Annotated[dict[str, Any] | None, Depends(get_optional_user)] = None,

@@ -15,6 +15,7 @@ pytz
 pymongo
 tweepy
 openai
+slowapi
 
 # --- Test & Dev Dependencies ---
 pytest
