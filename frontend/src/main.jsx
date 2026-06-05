@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import StatsDashboard from "./StatsDashboard";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -57,6 +58,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [settings, setSettings] = useState(defaultSettings);
   const [connected, setConnected] = useState({});
+  const [currentTab, setCurrentTab] = useState("settings");
   const [mode, setMode] = useState("login");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
   const [notice, setNotice] = useState("");
@@ -204,33 +206,36 @@ function App() {
           </div>
         </div>
         <nav>
-          <a className="active" href="#settings">Settings</a>
-          <a href="#publishing">Publishing</a>
-          <a href="#reminders">Reminders</a>
+          <a className={currentTab === "settings" ? "active" : ""} onClick={() => setCurrentTab("settings")} href="#settings">Settings</a>
+          <a onClick={() => setCurrentTab("settings")} href="#publishing">Publishing</a>
+          <a onClick={() => setCurrentTab("settings")} href="#reminders">Reminders</a>
+          <a className={currentTab === "stats" ? "active" : ""} onClick={() => setCurrentTab("stats")} href="#stats">Stats</a>
         </nav>
         <button className="ghost" onClick={logout}>Log out</button>
       </aside>
 
       <section className="content">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Workspace</p>
-            <h1>Settings and integrations</h1>
-          </div>
-          <div className="profile-pill">{user.name}</div>
-        </header>
+        {currentTab === "settings" && (
+          <>
+            <header className="topbar">
+              <div>
+                <p className="eyebrow">Workspace</p>
+                <h1>Settings and integrations</h1>
+              </div>
+              <div className="profile-pill">{user.name}</div>
+            </header>
 
-        <section className="status-band">
-          <div>
-            <p className="eyebrow">Onboarding progress</p>
-            <h2>{completion}% connected</h2>
-          </div>
-          <div className="meter" aria-label={`${completion}% connected`}>
-            <span style={{ width: `${completion}%` }} />
-          </div>
-        </section>
+            <section className="status-band">
+              <div>
+                <p className="eyebrow">Onboarding progress</p>
+                <h2>{completion}% connected</h2>
+              </div>
+              <div className="meter" aria-label={`${completion}% connected`}>
+                <span style={{ width: `${completion}%` }} />
+              </div>
+            </section>
 
-        <form id="settings" onSubmit={saveSettings} className="settings-grid">
+            <form id="settings" onSubmit={saveSettings} className="settings-grid">
           <IntegrationCard title="AI Provider" connected={connected.ai_provider}>
             <label>
               Provider
@@ -315,6 +320,9 @@ function App() {
             <button className="primary" disabled={isBusy}>{isBusy ? "Saving..." : "Save settings"}</button>
           </div>
         </form>
+          </>
+        )}
+        {currentTab === "stats" && <StatsDashboard token={token} api={api} />}
       </section>
     </main>
   );

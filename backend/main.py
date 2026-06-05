@@ -605,8 +605,15 @@ async def publish_blog(
 # Dashboard Endpoints
 # -----------------------------
 @app.get("/dashboard/stats")
-async def get_dashboard_stats(x_user_email: Optional[str] = Header(default=None)):
-    user_email = require_user(x_user_email)
+async def get_dashboard_stats(
+    x_user_email: Optional[str] = Header(default=None),
+    current_user: Annotated[dict[str, Any] | None, Depends(get_optional_user)] = None,
+):
+    if current_user:
+        user_email = current_user["email"]
+    else:
+        user_email = require_user(x_user_email)
+        
     user_filter = {"user_email": user_email}
 
     try:
@@ -618,7 +625,7 @@ async def get_dashboard_stats(x_user_email: Optional[str] = Header(default=None)
             {"$group": {"_id": "$platforms", "count": {"$sum": 1}}},
         ]
         platform_cursor = db.problem_info.aggregate(pipeline_platforms)
-        platform_counts = {doc["_id"]: doc["count"] async for doc in platform_cursor}
+        platform_counts = [{"name": doc["_id"], "value": doc["count"]} async for doc in platform_cursor]
 
         seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         pipeline_week = [
@@ -633,6 +640,34 @@ async def get_dashboard_stats(x_user_email: Optional[str] = Header(default=None)
         ]
         week_cursor = db.problem_info.aggregate(pipeline_week)
         week_activity = {doc["_id"]: doc["count"] async for doc in week_cursor}
+
+        # All time daily activity for the heatmap
+        pipeline_all_time = [
+            {"$match": user_filter},
+            {
+                "$group": {
+                    "_id": {"$substr": ["$date", 0, 10]},
+                    "count": {"$sum": 1},
+                }
+            },
+            {"$sort": {"_id": 1}},
+        ]
+        all_time_cursor = db.problem_info.aggregate(pipeline_all_time)
+        daily_activity = [{"date": doc["_id"], "count": doc["count"], "level": min(doc["count"], 4)} async for doc in all_time_cursor]
+
+        # Calculate streak
+        current_streak = 0
+        if daily_activity:
+            dates_set = {doc["date"] for doc in daily_activity}
+            today = datetime.now(timezone.utc).date()
+            
+            current_date = today
+            if current_date.isoformat() not in dates_set:
+                current_date = today - timedelta(days=1)
+                
+            while current_date.isoformat() in dates_set:
+                current_streak += 1
+                current_date -= timedelta(days=1)
 
         recent_cursor = (
             db.problem_info.find(
@@ -655,6 +690,8 @@ async def get_dashboard_stats(x_user_email: Optional[str] = Header(default=None)
             "total_posts": total,
             "platform_counts": platform_counts,
             "week_activity": week_activity,
+            "daily_activity": daily_activity,
+            "current_streak": current_streak,
             "recent": recent,
         }
     except HTTPException:
