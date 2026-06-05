@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from twilio.rest import Client
 
 # --- UPDATED AI PATH ---
-from ai_core.blog_generator import generate_blog
+from ai_core.blog_generator import generate_blog, generate_tags
 from devto import publish_to_platforms
 from models.reminder import PublishRecord
 from services.reminder_scheduler import start_scheduler
@@ -416,9 +416,23 @@ async def create_blog(
     user_settings = await _settings_for_user(current_user["id"]) if current_user else {}
 
     try:
-        blog_content = await run_in_threadpool(generate_blog, problem, credentials=user_settings)
+        blog_content = await run_in_threadpool(
+            generate_blog,
+            problem,
+            credentials=user_settings,
+        )
     except Exception as e:
         return {"status": "error", "message": f"AI provider failure: {str(e)}"}
+
+    try:
+        suggested_tags = await run_in_threadpool(
+            generate_tags,
+            problem,
+            blog_content,
+            credentials=user_settings,
+        )
+    except Exception:
+        suggested_tags = ""
 
     try:
         platform_results = await publish_to_platforms(
@@ -482,11 +496,11 @@ async def create_blog(
                 )
             except Exception as e:
                 print(f"Social sharing failed: {e}")
-
     return {
         "status": overall_status,
         "data": {
             "blog_content": blog_content,
+            "suggested_tags": suggested_tags,
             "platforms": platform_results,
             "social": social_results,
         },
