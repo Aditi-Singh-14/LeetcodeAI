@@ -486,16 +486,15 @@ async def create_blog(
                 )
             except Exception as e:
                 print(f"Social sharing failed: {e}")
-
-   return {
-    "status": overall_status,
-    "data": {
-        "blog_content": blog_content,
-        "suggested_tags": suggested_tags,
-        "platforms": platform_results,
-        "social": social_results,
-    },
-}
+    return {
+        "status": overall_status,
+        "data": {
+            "blog_content": blog_content,
+            "suggested_tags": suggested_tags,
+            "platforms": platform_results,
+            "social": social_results,
+        },
+    }
 
 
 # -----------------------------
