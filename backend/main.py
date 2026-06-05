@@ -18,6 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from twilio.rest import Client
 
+from ai import rate_code_efficiency
+
 # --- UPDATED AI PATH ---
 from ai_core.blog_generator import generate_blog
 from devto import publish_to_platforms
@@ -77,7 +79,7 @@ class Problem(BaseModel):
     code: str
     author: str = "Anonymous Developer"
     difficulty: str | None = None
-    language: str | None = None        
+    language: str | None = None
     client_time: str | None = None
     custom_prompt: str | None = None
     platforms: list[str] | None = None
@@ -493,8 +495,7 @@ async def create_blog(
     return {
         "status": overall_status,
         "data": {
-            "blog_content": blog_content,
-            "efficiency": efficiency, 
+            "blog_content": blog_content,"efficiency": efficiency,
             "platforms": platform_results,
             "social": social_results,
         },
