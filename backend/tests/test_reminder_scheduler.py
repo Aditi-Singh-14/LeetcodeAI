@@ -1,6 +1,24 @@
 from datetime import datetime, timezone
 
 import pytest
+import pytest
+from datetime import datetime, timezone
+
+
+@pytest.mark.parametrize(
+    "utc_time,expected_timezone",
+    [
+        (datetime(2026, 1, 1, 17, 30, tzinfo=timezone.utc), "Asia/Kolkata"),
+        (datetime(2026, 1, 1, 23, 0, tzinfo=timezone.utc), "UTC"),
+        (datetime(2026, 1, 2, 4, 0, tzinfo=timezone.utc), "America/New_York"),
+    ],
+)
+def test_due_timezones_multiple_regions(utc_time, expected_timezone):
+    from alerts.progress_checker import due_timezones
+
+    zones = due_timezones(utc_time)
+
+    assert expected_timezone in zones
 
 
 def test_due_timezones_includes_local_11pm_zone():
