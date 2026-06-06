@@ -193,7 +193,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         else showEmailSetup();
     });
 
-
     const statusEl = document.getElementById('status');
     const platformInputs = Array.from(document.querySelectorAll('input[name="platform"]'));
     const draftInput = document.getElementById('draftMode');
@@ -282,107 +281,131 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
     });
-});
 
-// Generate button
-document.getElementById('generateBtn').addEventListener('click', async () => {
-
-    const statusEl = document.getElementById('status');
-
-const btn = document.getElementById('generateBtn');
+    // Select elements using your kebab-case naming standard to match popup.html
+    const generateBtn = document.getElementById('generate-blog-btn');
+    const btnText = document.getElementById('btn-text');
+    const btnSpinner = document.getElementById('btn-spinner');
     const copyBtn = document.getElementById('copyBtn');
 
-    btn.disabled = true;
-    btn.innerText = "Generating...";
-    btn.style.cursor = "not-allowed";
-    if (copyBtn) copyBtn.disabled = true;
+    generateBtn.addEventListener('click', async () => {
+        const statusEl = document.getElementById('status');
 
-    startProgress();
+        // 1. Enter Loading State: Disable buttons to prevent multi-clicks
+        generateBtn.disabled = true;
+        generateBtn.style.cursor = "not-allowed";
+        if (copyBtn) copyBtn.disabled = true;
 
-    try {
+        // 2. Trigger your specific text and visual loading indicators
+        if (btnText) btnText.textContent = "Generating Blog...";
+        if (btnSpinner) btnSpinner.style.display = "inline-block";
 
-        const tabs = await chrome.tabs.query({
-            active: true,
-            currentWindow: true
-        });
+        btnText.textContent = "Generating Blog...";
+        btnSpinner.style.display = "inline-block";
 
-        const tab = tabs[0];
-
-        const customPrompt = document
-            .getElementById('customPrompt')
-            .value
-            .trim();
-
-        if (!tab || !tab.url || !tab.url.includes("leetcode.com/problems/")) {
-
-            statusEl.innerText = "Please open a LeetCode problem page!";
-            statusEl.className = "error-status";
-
-            // RESOLVED: finishProgress from fix branch + copyBtn re-enable from main
-            finishProgress(false);
-            btn.disabled = false;
-            btn.innerText = "Generate Blog";
-            btn.style.cursor = "pointer";
-            if (copyBtn) copyBtn.disabled = false;
-
-            return;
-        }
+        startProgress();
 
         try {
-
-            await chrome.tabs.sendMessage(tab.id, {
-                type: 'MANUAL_TRIGGER',
-                custom_prompt: customPrompt
+            const tabs = await chrome.tabs.query({
+                active: true,
+                currentWindow: true
             });
 
-        } catch (msgErr) {
+            const tab = tabs[0];
 
-            console.log("Re-injecting content script...");
+            const customPrompt = document
+                .getElementById('customPrompt')
+                .value
+                .trim();
 
-            await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                files: ['content.js']
-            });
+            if (!tab || !tab.url || !tab.url.includes("leetcode.com/problems/")) {
+                statusEl.innerText = "Please open a LeetCode problem page!";
+                statusEl.className = "error-status";
 
-            setTimeout(async () => {
+                // Clean up UI states and stop the progress tracking animation
+                finishProgress(false);
 
-                try {
-
-                    await chrome.tabs.sendMessage(tab.id, { type: 'MANUAL_TRIGGER' });
-
-                } catch (e2) {
-
-                    statusEl.innerText = "Error: Please refresh LeetCode page!";
-                    statusEl.className = "error-status";
-
-                    // RESOLVED: finishProgress from fix branch + copyBtn re-enable from main
-                    finishProgress(false);
-                    btn.disabled = false;
-                    btn.innerText = "Generate Blog";
-                    btn.style.cursor = "pointer";
-                    if (copyBtn) copyBtn.disabled = false;
+                // Re-enable components using your kebab-case naming standard
+                if (generateBtn) {
+                    generateBtn.disabled = false;
+                    generateBtn.style.cursor = "pointer";
                 }
+                if (btnText) btnText.textContent = "Generate Blog";
+                if (btnSpinner) btnSpinner.style.display = "none";
+                if (copyBtn) copyBtn.disabled = false;
 
-            }, 500);
+                return;
+            }
+
+            try {
+
+                await chrome.tabs.sendMessage(tab.id, {
+                    type: 'MANUAL_TRIGGER',
+                    custom_prompt: customPrompt
+                });
+
+            } catch (msgErr) {
+
+                console.log("Re-injecting content script...");
+
+                await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    files: ['content.js']
+                });
+
+                finishProgress(false);
+
+                if (generateBtn) generateBtn.disabled = false;
+                if (copyBtn) copyBtn.disabled = false;
+
+                await chrome.tabs.sendMessage(tab.id, { type: 'MANUAL_TRIGGER' });
+                setTimeout(async () => {
+
+                    try {
+                        await chrome.tabs.sendMessage(tab.id, { type: 'MANUAL_TRIGGER' });
+                    } catch (e2) {
+                        statusEl.innerText = "Error: Please refresh LeetCode page!";
+                        statusEl.className = "error-status";
+
+                        // Handle progress reset and re-enable UI buttons consistently
+                        finishProgress(false);
+
+                        if (generateBtn) {
+                            generateBtn.disabled = false;
+                            generateBtn.style.cursor = "pointer";
+                        }
+                        if (btnText) btnText.textContent = "Generate Blog";
+                        if (btnSpinner) btnSpinner.style.display = "none";
+                        if (copyBtn) copyBtn.disabled = false;
+                    }
+                }, 500);
+            }
+        } catch (e) {
+
+            console.error("Popup Error:", e);
+
+            statusEl.innerText = "Error: " + e.message;
+
+            if (statusEl) {
+                statusEl.className = "error-status";
+            }
+
+            finishProgress(false);
+
+            if (generateBtn) generateBtn.disabled = false;
+            if (copyBtn) copyBtn.disabled = false;
+
+            generateBtn.disabled = false;
+            btnText.textContent = "Generate Blog";
+            btnSpinner.style.display = "none";
         }
+    });
 
-    } catch (e) {
-
-        console.error("Popup Error:", e);
-
-        statusEl.innerText = "Error: " + e.message;
-        statusEl.className = "error-status";
-
-        // RESOLVED: finishProgress from fix branch + copyBtn re-enable from main
-        finishProgress(false);
-        btn.disabled = false;
-        btn.innerText = "Generate Blog";
-        btn.style.cursor = "pointer";
-        if (copyBtn) copyBtn.disabled = false;
+    if (statusEl) {
+        statusEl.innerText = "Publishing automation active";
     }
 });
 
-// Listen for blog ready event
 chrome.runtime.onMessage.addListener((request) => {
 
     if (request.type === "BLOG_READY") {
@@ -404,10 +427,6 @@ chrome.runtime.onMessage.addListener((request) => {
                     document.getElementById("status").innerText = "Blog generated successfully!";
 
                     finishProgress(true);
-                    const copyBtn = document.getElementById('copyBtn');
-                    if (copyBtn) copyBtn.disabled = false;
-                    document.getElementById("generateBtn").innerText = "Generate Blog";
-                    document.getElementById("generateBtn").style.cursor = "pointer";
                 }
             }
         );
@@ -417,7 +436,6 @@ chrome.runtime.onMessage.addListener((request) => {
 // Status updates
 chrome.runtime.onMessage.addListener((request) => {
 
-    // RESOLVED: used main's declarations (all three vars); removed duplicate const btn below
     const statusEl = document.getElementById('status');
     const btn = document.getElementById('generateBtn');
     const copyBtn = document.getElementById('copyBtn');
@@ -451,24 +469,29 @@ chrome.runtime.onMessage.addListener((request) => {
             finishProgress(true);
             if (copyBtn) copyBtn.disabled = false;
 
-statusEl.className = "warning-status";
+            statusEl.className = "warning-status";
             btn.disabled = false;
             btn.innerText = "Generate Blog";
             btn.style.cursor = "pointer";
         }
+
+        const btnTextEl = document.getElementById('btn-text');
+        const btnSpinnerEl = document.getElementById('btn-spinner');
+
+        if (btnTextEl) btnTextEl.textContent = "Generate Blog";
+        if (btnSpinnerEl) btnSpinnerEl.style.display = "none";
     }
 });
 
-// Dashboard button
-document.getElementById('dashboardBtn').addEventListener('click', () => {
+// Dashboard button handler from main branch
+document.getElementById('dashboardBtn')?.addEventListener('click', () => {
     chrome.tabs.create({
         url: chrome.runtime.getURL('dashboard.html')
     });
 });
 
-// Export Markdown
+// Export Markdown handler from main branch
 document.getElementById("exportMarkdownBtn")?.addEventListener("click", () => {
-
     const blob = new Blob([generatedBlogMarkdown], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
