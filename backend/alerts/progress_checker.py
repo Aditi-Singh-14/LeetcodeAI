@@ -318,24 +318,5 @@ async def enqueue_due_reminders(now_utc: datetime | None = None) -> dict:
         else:
             print(f"User {phone} has already solved {solved_today_count} problems today!")
 
-def check_unsolved_users():
-    asyncio.run(_check_unsolved_users_async())
-        await db.reminder_jobs.update_one(
-            {"key": queue_key},
-            {
-                "$set": {
-                    "key": queue_key,
-                    "user_id": user_id,
-                    "queued_at": now_utc.isoformat(),
-                    "timezone": user.get("timezone", DEFAULT_TIMEZONE),
-                }
-            },
-            upsert=True,
-        )
-        check_user_progress_and_alert_task.delay(user_id)
-        queued += 1
-
-    return {"queued": queued, "skipped": skipped, "due_users": len(due_users)}
-
 def check_unsolved_users() -> dict:
     return asyncio.run(enqueue_due_reminders())

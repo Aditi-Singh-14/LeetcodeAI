@@ -32,6 +32,7 @@ from ai_core.blog_generator import generate_blog, generate_tags
 from devto import publish_to_platforms
 from models.reminder import PublishRecord
 from services.reminder_scheduler import start_scheduler
+from services.complexity_analyzer import analyze_code
 from social import share_to_platforms
 
 load_dotenv()
@@ -111,6 +112,8 @@ class Problem(BaseModel):
     share_to_social: bool = True
     tags: list[str] | None = None
 
+class CodeAnalysisRequest(BaseModel):
+    code: str
 
 class ReminderPreference(BaseModel):
     whatsapp_number: str
@@ -400,6 +403,9 @@ async def update_integration_settings(
 
 # -----------------------------
 # Health Check
+@app.post("/analyze-code")
+async def analyze_complexity(payload: CodeAnalysisRequest):
+    return analyze_code(payload.code)
 # -----------------------------
 @app.get("/")
 def health_check():
