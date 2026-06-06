@@ -25,10 +25,7 @@ from pydantic import BaseModel
 from pymongo.errors import PyMongoError
 from twilio.rest import Client
 
-# --- CRYPTO & SERVICE IMPORTS ---
-from utils.crypto import encrypt
-from models.user import PlatformCredential
-from services.credential_service import resolve_user_credentials
+from ai import rate_code_efficiency
 
 # --- UPDATED AI PATH ---
 from ai_core.blog_generator import generate_blog, generate_tags
@@ -106,8 +103,9 @@ class Problem(BaseModel):
     code: str
     author: str = "Anonymous Developer"
     difficulty: str | None = None
-    client_time: str | None = None  
-    custom_prompt: str | None = None  
+    language: str | None = None
+    client_time: str | None = None
+    custom_prompt: str | None = None
     platforms: list[str] | None = None
     publish_as_draft: bool = False
     share_to_social: bool = True
@@ -446,10 +444,11 @@ async def create_blog(
     user_settings = await _settings_for_user(user_id)
 
     try:
-        blog_content = await run_in_threadpool(
-            generate_blog,
-            problem,
-            credentials=user_settings,
+        blog_content = await run_in_threadpool(generate_blog, problem, credentials=user_settings)
+        efficiency = rate_code_efficiency(
+            problem.title,
+            problem.code,
+            problem.language or "python"
         )
     except Exception as e:
         return {"status": "error", "message": f"AI provider failure: {str(e)}"}
@@ -523,8 +522,7 @@ async def create_blog(
     return {
         "status": overall_status,
         "data": {
-            "blog_content": blog_content,
-            "suggested_tags": suggested_tags,
+            "blog_content": blog_content,"efficiency": efficiency,
             "platforms": platform_results,
             "social": social_results,
         },

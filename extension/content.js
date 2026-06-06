@@ -6,7 +6,7 @@
 
     let isProcessing = false;
     let hasGeneratedForAccepted = false;
-    let lastProblemTitle = ""; 
+    let lastProblemTitle = "";
     let lastUrl = location.href;
     // Auto-trigger debounce and dedupe helpers
     let autoTriggerTimer = null;
@@ -50,11 +50,10 @@
                 }
             }
 
-            // Extract difficulty badge
-            const difficultyElement = document.querySelector('[class*="difficulty"]') ||
-                document.querySelector('[class*="Difficulty"]');
-            
-            const difficulty = difficultyElement ? difficultyElement.innerText.trim() : "Unknown";
+            // Extract selected programming language
+            const langElement = document.querySelector('[data-cy="lang-select"] button') ||
+                document.querySelector('.ant-select-selection-item');
+            const language = langElement ? langElement.innerText.trim().toLowerCase() : "unknown";
 
             // Extract the user's LeetCode Username
             let author = "Anonymous LeetCoder";
@@ -80,7 +79,7 @@
             // Send to background script
             chrome.runtime.sendMessage({
                 type: 'GENERATE_BLOG',
-                payload: { title, description, code, author, client_time, custom_prompt, difficulty } // add custom_prompt and difficulty
+                payload: { title, description, code, author, client_time, custom_prompt, difficulty, language }
             });
 
 
@@ -161,7 +160,7 @@
                 triggerBlogGeneration();
             }
 
-        } 
+        }
     });
 
     observer.observe(document.body, {

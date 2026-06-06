@@ -24,7 +24,7 @@ class TestHealthRoutes:
 
 class TestGenerateBlogRoute:
     def test_happy_path_returns_success(
-        self, client, mock_generate_blog, mock_post_to_platform
+    self, client, mock_generate_blog, mock_post_to_platform, mock_rate_code_efficiency
     ):
         """Both Gemini and Dev.to succeed  expect success body."""
         payload = {
@@ -141,9 +141,7 @@ class TestGenerateBlogRoute:
         assert body["status"] == "error"
         assert body["status"] == "error"
 
-    def test_generate_blog_called_with_problem(
-        self, client, mock_generate_blog, mock_post_to_platform
-    ):
+    def test_generate_blog_called_with_problem(self, client, mock_generate_blog, mock_post_to_platform, mock_rate_code_efficiency):
         """Verify generate_blog is actually called once."""
         payload = {
             "title": "Two Sum",
@@ -169,9 +167,7 @@ class TestGenerateBlogRoute:
         problem = mock_generate_blog.call_args.args[0]
         assert problem.difficulty == "Easy"
 
-    def test_post_to_platform_receives_title(
-        self, client, mock_generate_blog, mock_post_to_platform
-    ):
+    def test_post_to_platform_receives_title(self, client, mock_generate_blog, mock_post_to_platform, mock_rate_code_efficiency):
         """Verify post_to_platform is called with the correct title."""
         payload = {
             "title": "Two Sum",
@@ -211,7 +207,7 @@ class TestGenerateBlogRoute:
 
 
 class TestPublishBlogRoute:
-    def test_happy_path_returns_success(self, client, mock_post_to_platform):
+    def test_happy_path_returns_success(self, client, mock_generate_blog, mock_post_to_platform, mock_rate_code_efficiency):
         """Publishing edited blog succeeds and returns success body."""
         payload = {
             "title": "Two Sum",
