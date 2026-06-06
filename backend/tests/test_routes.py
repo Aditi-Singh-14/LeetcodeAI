@@ -187,6 +187,28 @@ class TestGenerateBlogRoute:
         )
         mock_post_to_platform.assert_called_once()
 
+    def test_pymongo_error_handling(self, client, mock_db):
+        """When a MongoDB error is raised, route returns 503 error."""
+        from pymongo.errors import PyMongoError
+
+        # Mock find_one to raise PyMongoError
+        mock_db.problem_info.find_one.side_effect = PyMongoError("Connection timed out")
+
+        payload = {
+            "title": "Two Sum",
+            "description": "Given an array...",
+            "code": "def twoSum(): pass",
+            "author": "testuser",
+        }
+        response = client.post("/generate-blog", json=payload)
+
+        # Should return 503 Service Unavailable
+        assert response.status_code == 503
+
+        body = response.json()
+        assert body["status"] == "error"
+        assert "Database connection failed" in body["message"]
+
 
 class TestPublishBlogRoute:
     def test_happy_path_returns_success(self, client, mock_post_to_platform):

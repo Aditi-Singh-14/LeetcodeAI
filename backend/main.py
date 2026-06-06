@@ -1,23 +1,28 @@
 import base64
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import json
+import logging
 import os
 import secrets
-from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Optional
 
 import motor.motor_asyncio
 import uvicorn
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from pymongo.errors import PyMongoError
 from twilio.rest import Client
 
 # --- CRYPTO & SERVICE IMPORTS ---
@@ -34,6 +39,8 @@ from social import share_to_platforms
 
 load_dotenv()
 
+logger = logging.getLogger("leetcodeai")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -48,7 +55,22 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# Initialize FastAPI with the incoming lifespan configuration intact
 app = FastAPI(title="LeetLog AI", version="1.0.0", lifespan=lifespan)
+
+
+# Attach your custom global database exception handler
+@app.exception_handler(PyMongoError)
+async def mongodb_exception_handler(request: Request, exc: PyMongoError):
+    logger.error(f"Database error encountered: {str(exc)}")
+    return JSONResponse(
+        status_code=503,
+        content={
+            "status": "error",
+            "message": "Database connection failed. Please ensure MongoDB is running.",
+        },
+    )
+
 
 app.add_middleware(
     CORSMiddleware,
