@@ -4,9 +4,48 @@ import pytest
 
 
 def test_due_timezones_includes_local_11pm_zone():
+    
     from alerts.progress_checker import due_timezones
 
     zones = due_timezones(datetime(2026, 1, 1, 17, 30, tzinfo=timezone.utc))
+
+    assert "Asia/Kolkata" in zones
+def test_due_timezones_includes_utc():
+    from alerts.progress_checker import due_timezones
+
+    zones = due_timezones(
+        datetime(2026, 1, 1, 23, 0, tzinfo=timezone.utc)
+    )
+
+    assert "UTC" in zones
+
+
+def test_due_timezones_includes_new_york():
+    from alerts.progress_checker import due_timezones
+
+    zones = due_timezones(
+        datetime(2026, 1, 2, 4, 0, tzinfo=timezone.utc)
+    )
+
+    assert "America/New_York" in zones
+
+
+def test_due_timezones_includes_los_angeles():
+    from alerts.progress_checker import due_timezones
+
+    zones = due_timezones(
+        datetime(2026, 1, 2, 7, 0, tzinfo=timezone.utc)
+    )
+
+    assert "America/Los_Angeles" in zones
+
+
+def test_due_timezones_year_end_boundary():
+    from alerts.progress_checker import due_timezones
+
+    zones = due_timezones(
+        datetime(2026, 12, 31, 17, 30, tzinfo=timezone.utc)
+    )
 
     assert "Asia/Kolkata" in zones
 
