@@ -1,34 +1,46 @@
 import base64
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import json
+import logging
 import os
 import secrets
-from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Optional
 
 import motor.motor_asyncio
 import uvicorn
+import httpx
+
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status, Request
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
+from dotenv import load_dotenv
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+from pymongo.errors import PyMongoError
 from twilio.rest import Client
 
+from ai import rate_code_efficiency
+
 # --- UPDATED AI PATH ---
-from ai_core.blog_generator import generate_blog
+from ai_core.blog_generator import generate_blog, generate_tags
 from devto import publish_to_platforms
 from models.reminder import PublishRecord
 from services.reminder_scheduler import start_scheduler
+from services.complexity_analyzer import analyze_code
 from social import share_to_platforms
 
 load_dotenv()
+
+logger = logging.getLogger("leetcodeai")
 
 
 @asynccontextmanager
@@ -44,11 +56,26 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# Initialize FastAPI with the incoming lifespan configuration intact
 app = FastAPI(title="LeetLog AI", version="1.0.0", lifespan=lifespan)
 
+# Initialize the rate limiter using our custom safe IP function
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Attach your custom global database exception handler
+@app.exception_handler(PyMongoError)
+async def mongodb_exception_handler(request: Request, exc: PyMongoError):
+    logger.error(f"Database error encountered: {str(exc)}")
+    return JSONResponse(
+        status_code=503,
+        content={
+            "status": "error",
+            "message": "Database connection failed. Please ensure MongoDB is running.",
+        },
+    )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -84,13 +111,16 @@ class Problem(BaseModel):
     code: str
     author: str = "Anonymous Developer"
     difficulty: str | None = None
-    client_time: str | None = None  # Optional client time string
-    custom_prompt: str | None = None  # custom_prompt for the user
+    language: str | None = None
+    client_time: str | None = None
+    custom_prompt: str | None = None
     platforms: list[str] | None = None
     publish_as_draft: bool = False
     share_to_social: bool = True
     tags: list[str] | None = None
 
+class CodeAnalysisRequest(BaseModel):
+    code: str
 
 class ReminderPreference(BaseModel):
     whatsapp_number: str
@@ -292,13 +322,14 @@ async def register(credentials: AuthCredentials):
 
     salt, password_hash = _hash_password(credentials.password)
     user = {
-        "id": secrets.token_urlsafe(16),
-        "name": (credentials.name or email.split("@")[0]).strip(),
-        "email": email,
-        "timezone": credentials.timezone,
-        "password_salt": salt,
-        "password_hash": password_hash,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+    "id": secrets.token_urlsafe(16),
+    "name": (credentials.name or email.split("@")[0]).strip(),
+    "email": email,
+    "timezone": credentials.timezone,
+    "password_salt": salt,
+    "password_hash": password_hash,
+    "created_at": datetime.now(timezone.utc).isoformat(),
+    "credentials": {},
     }
     await db.users.insert_one(user)
     await db.integration_settings.update_one(
@@ -379,6 +410,9 @@ async def update_integration_settings(
 
 # -----------------------------
 # Health Check
+@app.post("/analyze-code")
+async def analyze_complexity(payload: CodeAnalysisRequest):
+    return analyze_code(payload.code)
 # -----------------------------
 @app.get("/")
 def health_check():
@@ -393,16 +427,16 @@ def health_check():
 async def create_blog(
     request: Request,
     problem: Problem,
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
     x_user_email: Optional[str] = Header(default=None),
-    current_user: Annotated[dict[str, Any] | None, Depends(get_optional_user)] = None,
 ):
     """
-    Accepts a LeetCode problem and:
-    1. Generates a blog using the unified ai.providers module
-    2. Publishes it to one or more configured platforms
+    Accepts a LeetCode problem, pulls user-specific database integration credentials,
+    generates a blog post using AI, and publishes it dynamically.
     """
     user_email = require_user(x_user_email)
-    # Check if the user has already published a successful blog for this problem
+    user_id = current_user["id"]
+
     existing_record = await db.problem_info.find_one(
         {"title": problem.title, "author": problem.author, "status": "success"}
     )
@@ -410,7 +444,7 @@ async def create_blog(
     if existing_record:
         return {
             "status": "error",
-            "message": f"Solution for '{problem.title}' has already been published! Keep up the great streak!",
+            "message": f"Solution for '{problem.title}' has already been published!",
         }
 
     if problem.custom_prompt and len(problem.custom_prompt.strip()) > 1000:
@@ -422,12 +456,30 @@ async def create_blog(
     if not problem.code or problem.code.strip() == "":
         return {"status": "error", "message": "Code is empty, cannot generate blog."}
 
-    user_settings = await _settings_for_user(current_user["id"]) if current_user else {}
+    user_settings = await _settings_for_user(user_id)
 
     try:
         blog_content = await run_in_threadpool(generate_blog, problem, credentials=user_settings)
+        efficiency = rate_code_efficiency(
+            problem.title,
+            problem.code,
+            problem.language or "python"
+        )
     except Exception as e:
         return {"status": "error", "message": f"AI provider failure: {str(e)}"}
+
+    # Resolve platform-specific credentials from database securely at runtime
+    devto_creds = await resolve_user_credentials(db, user_id, "devto")
+
+    try:
+        suggested_tags = await run_in_threadpool(
+            generate_tags,
+            problem,
+            blog_content,
+            credentials=user_settings,
+        )
+    except Exception:
+        suggested_tags = ""
 
     try:
         platform_results = await publish_to_platforms(
@@ -436,7 +488,7 @@ async def create_blog(
             platforms=problem.platforms or user_settings.get("publish_platforms"),
             published=not problem.publish_as_draft,
             tags=problem.tags,
-            credentials=user_settings,
+            credentials=devto_creds,  # Using user specific keys
         )
         successful = [r for r in platform_results if r.get("status") == "success"]
         overall_status = (
@@ -458,14 +510,8 @@ async def create_blog(
         )
 
         await db.problem_info.update_one(
-            {
-                "title": problem.title,
-                "author": problem.author,
-                "user_email": user_email,
-            },
-            {
-                "$set": record.model_dump(),
-            },
+            {"title": problem.title, "author": problem.author, "user_email": user_email},
+            {"$set": record.model_dump()},
             upsert=True,
         )
 
@@ -474,28 +520,24 @@ async def create_blog(
 
     social_results = []
     if problem.share_to_social and successful:
-        # Find the first URL to share from successful platforms
-        post_url = None
-        for res in successful:
-            if res.get("url"):
-                post_url = res["url"]
-                break
+        post_url = next((res["url"] for res in successful if res.get("url")), None)
 
         if post_url:
             try:
+                # Dynamically fetch encrypted LinkedIn credentials
+                linkedin_creds = await resolve_user_credentials(db, user_id, "linkedin")
                 social_results = share_to_platforms(
                     title=problem.title,
                     post_url=post_url,
                     tags=problem.tags,
-                    credentials=user_settings,
+                    credentials=linkedin_creds,  # Decrypted user scope profile object
                 )
             except Exception as e:
                 print(f"Social sharing failed: {e}")
-
     return {
         "status": overall_status,
         "data": {
-            "blog_content": blog_content,
+            "blog_content": blog_content,"efficiency": efficiency,
             "platforms": platform_results,
             "social": social_results,
         },
@@ -518,16 +560,17 @@ class EditedBlog(BaseModel):
 @app.post("/publish-blog")
 async def publish_blog(
     blog: EditedBlog,
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
     x_user_email: Optional[str] = Header(default=None),
-    current_user: Annotated[dict[str, Any] | None, Depends(get_optional_user)] = None,
 ):
     """
-    Accepts an edited blog and:
-    1. Publishes it to one or more configured platforms
+    Accepts an edited blog post and distributes it using safe user-isolated tokens.
     """
     user_email = require_user(x_user_email)
+    user_id = current_user["id"]
 
-    user_settings = await _settings_for_user(current_user["id"]) if current_user else {}
+    user_settings = await _settings_for_user(user_id)
+    devto_creds = await resolve_user_credentials(db, user_id, "devto")
 
     try:
         platform_results = await publish_to_platforms(
@@ -536,7 +579,7 @@ async def publish_blog(
             platforms=blog.platforms or user_settings.get("publish_platforms"),
             published=not blog.publish_as_draft,
             tags=blog.tags,
-            credentials=user_settings,
+            credentials=devto_creds,
         )
         successful = [r for r in platform_results if r.get("status") == "success"]
         overall_status = (
@@ -558,35 +601,25 @@ async def publish_blog(
         )
 
         await db.problem_info.update_one(
-            {
-                "title": blog.title,
-                "author": blog.author,
-                "user_email": user_email,
-            },
-            {
-                "$set": record.model_dump(),
-            },
+            {"title": blog.title, "author": blog.author, "user_email": user_email},
+            {"$set": record.model_dump()},
             upsert=True,
         )
-
     except Exception as e:
         print(f"Database logging failed: {e}")
 
     social_results = []
     if blog.share_to_social and successful:
-        post_url = None
-        for res in successful:
-            if res.get("url"):
-                post_url = res["url"]
-                break
+        post_url = next((res["url"] for res in successful if res.get("url")), None)
 
         if post_url:
             try:
+                linkedin_creds = await resolve_user_credentials(db, user_id, "linkedin")
                 social_results = share_to_platforms(
                     title=blog.title,
                     post_url=post_url,
                     tags=blog.tags,
-                    credentials=user_settings,
+                    credentials=linkedin_creds,
                 )
             except Exception as e:
                 print(f"Social sharing failed: {e}")
@@ -703,34 +736,22 @@ async def record_publish(
 # -----------------------------
 @app.get("/reminder-health")
 def reminder_health():
-    """
-    Health check endpoint for reminder services.
-    """
     return {"status": "active", "message": "Reminder call infrastructure is running."}
 
 
 @app.get("/test-whatsapp")
 def test_whatsapp():
     try:
-        import os
-
         from alerts.twilio_service import send_whatsapp_message
 
         phone = os.getenv("TEST_PHONE_NUMBER")
         if not phone:
-            return {
-                "status": "error",
-                "message": "TEST_PHONE_NUMBER is not set in environment.",
-            }
+            return {"status": "error", "message": "TEST_PHONE_NUMBER is not set."}
         sid = send_whatsapp_message(
             phone,
             "Hello Vansh! Your Twilio WhatsApp integration on Render is working perfectly! 🚀",
         )
-        return {
-            "status": "success",
-            "sid": sid,
-            "message": "WhatsApp message sent successfully.",
-        }
+        return {"status": "success", "sid": sid, "message": "WhatsApp message sent successfully."}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -738,8 +759,6 @@ def test_whatsapp():
 @app.get("/test-call")
 def test_call():
     try:
-        import os
-
         from alerts.elevenlabs_service import generate_audio, generate_message
         from alerts.twilio_service import make_call
 
@@ -747,19 +766,14 @@ def test_call():
 
         try:
             audio_file = generate_audio(message)
-            backend_url = os.getenv(
-                "BACKEND_URL", "https://leetcodeai-backend.onrender.com"
-            )
+            backend_url = os.getenv("BACKEND_URL", "https://leetcodeai-backend.onrender.com")
             if backend_url.endswith("/"):
                 backend_url = backend_url[:-1]
             audio_url = f"{backend_url}/{audio_file}"
 
             phone = os.getenv("TEST_PHONE_NUMBER")
             if not phone:
-                return {
-                    "status": "error",
-                    "message": "TEST_PHONE_NUMBER is not set in environment.",
-                }
+                return {"status": "error", "message": "TEST_PHONE_NUMBER is not set."}
 
             sid = make_call(phone, audio_url=audio_url)
             return {
@@ -769,20 +783,16 @@ def test_call():
                 "message": "Call initiated successfully with ElevenLabs.",
             }
         except Exception as el_err:
-            print("ElevenLabs Error in Test Route:", el_err)
-            # Fallback to Twilio TTS
+            print("ElevenLabs Error:", el_err)
             phone = os.getenv("TEST_PHONE_NUMBER")
             if not phone:
-                return {
-                    "status": "error",
-                    "message": "TEST_PHONE_NUMBER is not set in environment.",
-                }
+                return {"status": "error", "message": "TEST_PHONE_NUMBER is not set."}
 
             sid = make_call(phone, text_to_say=message)
             return {
                 "status": "success",
                 "sid": sid,
-                "message": "ElevenLabs failed (Free Tier VPN block), but Twilio TTS call initiated successfully.",
+                "message": "ElevenLabs failed, fallback to Twilio TTS succeeded.",
                 "elevenlabs_error": str(el_err),
             }
     except Exception as e:
@@ -808,8 +818,120 @@ async def unsubscribe(data: dict):
 
 
 # -----------------------------
+# LinkedIn OAuth 2.0
+# -----------------------------
+@app.get("/auth/linkedin/login")
+async def linkedin_login():
+    auth_url = (
+        "https://www.linkedin.com/oauth/v2/authorization"
+        "?response_type=code"
+        f"&client_id={os.getenv('LINKEDIN_CLIENT_ID')}"
+        f"&redirect_uri={os.getenv('LINKEDIN_REDIRECT_URI')}"
+        "&scope=openid profile email"
+    )
+    return RedirectResponse(auth_url)
+
+
+@app.get("/auth/linkedin/callback")
+async def linkedin_callback(
+    code: Optional[str] = None,
+    error: Optional[str] = None,
+    state: Optional[str] = None,
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)] = None,
+):
+    """
+    OAuth2 Callback processor handling authorization responses from LinkedIn API servers.
+    Validates authorizations, queries tokens, fetches user URN identifiers, and saves encrypted data.
+    """
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"OAuth authorization failed from LinkedIn: {error}",
+        )
+
+    if not code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Authorization challenge token parameter code missing.",
+        )
+
+    async with httpx.AsyncClient() as client:
+        token_response = await client.post(
+            "https://www.linkedin.com/oauth/v2/accessToken",
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": os.getenv("LINKEDIN_CLIENT_ID"),
+                "client_secret": os.getenv("LINKEDIN_CLIENT_SECRET"),
+                "redirect_uri": os.getenv("LINKEDIN_REDIRECT_URI"),
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+        if token_response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed retrieving access tokens from LinkedIn: {token_response.text}",
+            )
+
+        token_data = token_response.json()
+        access_token = token_data.get("access_token")
+        expires_in = token_data.get("expires_in")
+
+        calculated_expiry = None
+        if expires_in:
+            calculated_expiry = int(datetime.now(timezone.utc).timestamp()) + int(expires_in)
+
+        # Query OpenID Connect endpoint for user details
+        userinfo_response = await client.get(
+            "https://api.linkedin.com/v2/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        if userinfo_response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed gathering profile details from Identity service endpoints.",
+            )
+
+        userinfo_data = userinfo_response.json()
+        sub_id = userinfo_data.get("sub")
+        person_urn = f"urn:li:person:{sub_id}"
+
+        # Encrypt access token before storing
+        encrypted_token = encrypt(access_token)
+
+        credential_record = PlatformCredential(
+            access_token=encrypted_token,
+            refresh_token=encrypt(token_data["refresh_token"]) if "refresh_token" in token_data else None,
+            expires_at=calculated_expiry,
+            person_urn=person_urn,
+        )
+
+        # Update specific platform schema map inside user document
+        await db.users.update_one(
+            {"id": current_user["id"]},
+            {"$set": {"credentials.linkedin": credential_record.model_dump()}},
+        )
+
+        # Sync legacy flat document structure for settings backward compatibility
+        await db.integration_settings.update_one(
+            {"user_id": current_user["id"]},
+            {
+                "$set": {
+                    "linkedin_access_token": encrypted_token,
+                    "linkedin_person_urn": person_urn,
+                }
+            },
+            upsert=True,
+        )
+
+    frontend_dashboard_url = os.getenv("FRONTEND_REDIRECT_URL", "http://localhost:3000/settings")
+    return RedirectResponse(url=frontend_dashboard_url)
+
+
+# -----------------------------
 # Run Server
 # -----------------------------
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=10000, reload=True)
-

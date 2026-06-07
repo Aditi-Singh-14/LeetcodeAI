@@ -62,6 +62,10 @@ function App() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  const [codeInput, setCodeInput] = useState("");
+  const [selectedLanguage, setSelectedLanguage] = useState("Python");
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
 
   const completion = useMemo(() => {
     const checks = [
@@ -145,6 +149,35 @@ function App() {
       setIsBusy(false);
     }
   }
+  async function analyzeCode() {
+  setAnalysisLoading(true);
+  setError("");
+
+  try {
+    const response = await fetch("http://127.0.0.1:8000/analyze-code", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        code: codeInput
+      })
+    });
+
+    const data = await response.json();
+    if (data.error) { 
+      setError(data.error);
+      setAnalysisResult(null);
+      return;
+}
+setError("");
+setAnalysisResult(data);
+  } catch (err) {
+    setError("Failed to analyze code.");
+  } finally {
+    setAnalysisLoading(false);
+  }
+}
 
   function logout() {
     localStorage.removeItem(TOKEN_KEY);
@@ -229,6 +262,76 @@ function App() {
             <span style={{ width: `${completion}%` }} />
           </div>
         </section>
+        <section className="integration-card">
+          <header>
+             <h2>AI Code Complexity Analyzer</h2>
+             <span className="badge connected">New</span>
+             </header>
+             <div className="stack">
+              <label>
+                Language
+                <select
+                value={selectedLanguage}
+                onChange={(e) => setSelectedLanguage(e.target.value)}
+                >
+                  <option>Python</option>
+                  <option>JavaScript</option>
+                  <option>Java</option>
+                  </select>
+                  </label>
+              <label>
+                Paste your code
+                <textarea
+                rows="10"
+                value={codeInput}
+                onChange={(e) => setCodeInput(e.target.value)}
+                placeholder="Paste Python code here..."
+                />
+                </label>
+                <button
+                type="button"
+                className="primary"
+                onClick={analyzeCode}
+                disabled={analysisLoading}
+    >
+      {analysisLoading ? "Analyzing..." : "Analyze Code"}
+      </button>
+      {error && (
+        <div className="alert error">
+          {error}
+          </div>
+)}
+      {analysisResult && (
+        <div className="analysis-result">
+        <p>
+          <strong>Time Complexity:</strong>{" "}
+          <span
+          className={
+          analysisResult.timeComplexity.includes("n²")
+        ? "complexity-badge high"
+        : analysisResult.timeComplexity.includes("log")
+        ? "complexity-badge medium"
+        : "complexity-badge low"
+    }
+  >
+    {analysisResult.timeComplexity}
+  </span>
+</p>
+        <p><strong>Space Complexity:</strong> {analysisResult.spaceComplexity}</p>
+        <p><strong>Pattern:</strong> {analysisResult.pattern}</p>
+
+        <div>
+          <strong>Suggestions:</strong>
+          <ul>
+            {analysisResult.suggestions?.map((item, index) => (
+              <li key={index}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    )}
+  </div>
+</section>
 
         <form id="settings" onSubmit={saveSettings} className="settings-grid">
           <IntegrationCard title="AI Provider" connected={connected.ai_provider}>
