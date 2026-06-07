@@ -22,6 +22,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from pymongo.errors import PyMongoError
 from twilio.rest import Client
 
@@ -56,6 +59,10 @@ async def lifespan(app: FastAPI):
 # Initialize FastAPI with the incoming lifespan configuration intact
 app = FastAPI(title="LeetLog AI", version="1.0.0", lifespan=lifespan)
 
+# Initialize the rate limiter using our custom safe IP function
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Attach your custom global database exception handler
 @app.exception_handler(PyMongoError)
@@ -416,7 +423,9 @@ def health_check():
 # Blog Generator Endpoint
 # -----------------------------
 @app.post("/generate-blog")
+@limiter.limit("5/minute")
 async def create_blog(
+    request: Request,
     problem: Problem,
     current_user: Annotated[dict[str, Any], Depends(get_current_user)],
     x_user_email: Optional[str] = Header(default=None),
