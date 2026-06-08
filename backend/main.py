@@ -37,17 +37,41 @@ from models.reminder import PublishRecord
 from services.reminder_scheduler import start_scheduler
 from services.complexity_analyzer import analyze_code
 from social import share_to_platforms
+from services.credential_service import resolve_user_credentials
+from models.user import PlatformCredential
+from utils.crypto import encrypt
 
 load_dotenv()
 
 logger = logging.getLogger("leetcodeai")
 
+# -----------------------------
+# MongoDB Setup
+# -----------------------------
+mongo_client = motor.motor_asyncio.AsyncIOMotorClient(os.getenv("MONGODB_URI"))
+db = mongo_client.leetcodeai
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Start background schedulers when server starts.
+    Start background schedulers and initialize MongoDB indexes when server starts.
     """
+    try:
+        # Create indexes to prevent COLLSCAN on dashboard queries
+        await db.problem_info.create_index(
+            [("user_email", 1), ("date", -1)],
+            background=True
+        )
+        await db.users.create_index(
+            [("email", 1)],
+            unique=True,
+            background=True
+        )
+        print("MongoDB indexes ensured successfully.")
+    except Exception as e:
+        logger.error(f"Failed to create MongoDB indexes: {e}")
+
     try:
         start_scheduler()
         print("Reminder scheduler started successfully.")
@@ -94,12 +118,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # -----------------------------
 twilio_client = Client(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
 
-# -----------------------------
-# MongoDB Setup
-# -----------------------------
-mongo_client = motor.motor_asyncio.AsyncIOMotorClient(os.getenv("MONGODB_URI"))
-
-db = mongo_client.leetcodeai
 
 
 # -----------------------------
