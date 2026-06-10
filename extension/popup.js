@@ -1,10 +1,10 @@
 // ── Email setup ──────────────────────────────────────────────
 const API_BASE_URL = "https://leetcodeai-backend.onrender.com";
 
-const MAIN_IDS = ['generate-blog-btn','copyBtn','customPrompt',
-    '.input-group','.platform-panel','#exportSection',
-    '#previewSection','#progressContainer','#status','#dashboardBtn','#historySection',
-    '.footer','h2','p'];
+const MAIN_IDS = ['generate-blog-btn', 'copyBtn', 'customPrompt',
+    '.input-group', '.platform-panel', '#exportSection',
+    '#previewSection', '#progressContainer', '#status', '#dashboardBtn', '#historySection',
+    '.footer', 'h2', 'p'];
 let authMode = 'login';
 
 function setAuthStatus(message, type = 'error') {
@@ -34,7 +34,7 @@ function showEmailSetup() {
     document.getElementById('passwordInput').value = '';
     setAuthStatus('', 'error');
     // hide main content while setup is shown
-    ['generate-blog-btn','copyBtn','dashboardBtn'].forEach(id => {
+    ['generate-blog-btn', 'copyBtn', 'dashboardBtn'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
@@ -51,7 +51,7 @@ function showMainUI(email) {
     badge.style.display = 'flex';
     document.getElementById('userEmailDisplay').textContent = email;
     // restore main content
-    ['generate-blog-btn','copyBtn','dashboardBtn'].forEach(id => {
+    ['generate-blog-btn', 'copyBtn', 'dashboardBtn'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = '';
     });
@@ -131,11 +131,11 @@ document.getElementById('toggleAuthMode').addEventListener('click', () => {
     setAuthMode(authMode === 'login' ? 'signup' : 'login');
 });
 
-document.getElementById('emailInput').addEventListener('input', function() {
+document.getElementById('emailInput').addEventListener('input', function () {
     this.classList.remove('invalid');
 });
 
-document.getElementById('passwordInput').addEventListener('input', function() {
+document.getElementById('passwordInput').addEventListener('input', function () {
     this.classList.remove('invalid');
 });
 

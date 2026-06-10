@@ -1,5 +1,4 @@
 const API_BASE_URL = "https://leetcodeai-backend.onrender.com";
-//const API_BASE_URL = "http://localhost:10000";
 
 async function parseApiResponse(response) {
     const data = await response.json().catch(() => ({}));
@@ -39,29 +38,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     publish_as_draft: publishAsDraft
                 })
             })
-            .then(parseApiResponse)
-            .then(data => {
-                if (data.status === 'success' || data.status === 'partial_success'){
-                    const generatedBlog =
-                        data.data?.blog_content || "";
+                .then(parseApiResponse)
+                .then(data => {
+                    if (data.status === 'success' || data.status === 'partial_success') {
+                        const generatedBlog =
+                            data.data?.blog_content || "";
 
-                    chrome.storage.local.set({
-                        generatedBlog,
-                        generatedProblemTitle: title
-                    }, () => {
+                        chrome.storage.local.set({
+                            generatedBlog,
+                            generatedProblemTitle: title
+                        }, () => {
 
-                        chrome.runtime.sendMessage({
-                            type: "BLOG_READY"
+                            chrome.runtime.sendMessage({
+                                type: "BLOG_READY"
+                            });
+
                         });
+                    }
 
-                });
-                }
-
-                if (data.status === 'success' || data.status === 'partial_success') {
-                    const platforms = data.data?.platforms || [];
-                    const postedPlatforms = platforms
-                        .filter(result => result.status === 'success')
-                        .map(result => result.platform);
+                    if (data.status === 'success' || data.status === 'partial_success') {
+                        const platforms = data.data?.platforms || [];
+                        const postedPlatforms = platforms
+                            .filter(result => result.status === 'success')
+                            .map(result => result.platform);
                         const devtoResult = platforms.find(r => r.platform === 'devto' && r.status === 'success');
                         chrome.storage.local.get({ publishHistory: [] }, (res) => {
                             const entry = {
@@ -74,53 +73,53 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                             history.unshift(entry);
                             chrome.storage.local.set({ publishHistory: history.slice(0, 10) });
                         });
-                    const failedPlatforms = platforms
-                        .filter(r => r.status === 'error').map(r => r.platform);
- 
-                    const entry = {
-                        title,
-                        date: client_time || new Date().toISOString(),
-                        platforms: postedPlatforms,
-                        status: data.status,
-                        author,
-                        user_email: userEmail,
-                    };
- 
-                    const historyKey = `publishHistory_${userEmail}`;
-                    chrome.storage.local.get({ [historyKey]: [] }, (res) => {
-                        const history = (res[historyKey] || []).filter(h => h.title !== entry.title);
-                        history.unshift(entry);
-                        chrome.storage.local.set({ [historyKey]: history.slice(0, 100) });
-                    });
- 
-                    fetch(`${API_BASE_URL}/dashboard/record`, {
-                        method: "POST",
-                        headers: authHeaders(userEmail, sessionToken),
-                        body: JSON.stringify(entry)
-                    }).catch(() => {});
-                    chrome.runtime.sendMessage({
-                        type: 'STATUS_UPDATE',
-                        message:
-                        failedPlatforms.length > 0
-                            ? `Posted to ${postedPlatforms.join(', ')}; failed: ${failedPlatforms.join(', ')}`
-                            : postedPlatforms.length > 0
-                                ? `Posted to ${postedPlatforms.join(', ')}`
-                                : 'Posted',
-                        status: data.status === 'partial_success' ? 'warning' : 'success',
-                        platforms
-                    });
-                } else {
-                    const platformErrors = data.data?.platforms
-                        ?.filter(result => result.status === 'error')
-                        ?.map(result => `${result.platform}: ${result.message}`)
-                        ?.join('; ');
-                    const errMsg = platformErrors || data.message || JSON.stringify(data);
-                    chrome.runtime.sendMessage({ type: 'STATUS_UPDATE', message: 'Error: ' + errMsg, status: 'error' });
-                }
-            })
-            .catch(error => {
-                chrome.runtime.sendMessage({ type: 'STATUS_UPDATE', message: 'Network Error: ' + error.message, status: 'error' });
-            });
+                        const failedPlatforms = platforms
+                            .filter(r => r.status === 'error').map(r => r.platform);
+
+                        const entry = {
+                            title,
+                            date: client_time || new Date().toISOString(),
+                            platforms: postedPlatforms,
+                            status: data.status,
+                            author,
+                            user_email: userEmail,
+                        };
+
+                        const historyKey = `publishHistory_${userEmail}`;
+                        chrome.storage.local.get({ [historyKey]: [] }, (res) => {
+                            const history = (res[historyKey] || []).filter(h => h.title !== entry.title);
+                            history.unshift(entry);
+                            chrome.storage.local.set({ [historyKey]: history.slice(0, 100) });
+                        });
+
+                        fetch(`${API_BASE_URL}/dashboard/record`, {
+                            method: "POST",
+                            headers: authHeaders(userEmail, sessionToken),
+                            body: JSON.stringify(entry)
+                        }).catch(() => { });
+                        chrome.runtime.sendMessage({
+                            type: 'STATUS_UPDATE',
+                            message:
+                                failedPlatforms.length > 0
+                                    ? `Posted to ${postedPlatforms.join(', ')}; failed: ${failedPlatforms.join(', ')}`
+                                    : postedPlatforms.length > 0
+                                        ? `Posted to ${postedPlatforms.join(', ')}`
+                                        : 'Posted',
+                            status: data.status === 'partial_success' ? 'warning' : 'success',
+                            platforms
+                        });
+                    } else {
+                        const platformErrors = data.data?.platforms
+                            ?.filter(result => result.status === 'error')
+                            ?.map(result => `${result.platform}: ${result.message}`)
+                            ?.join('; ');
+                        const errMsg = platformErrors || data.message || JSON.stringify(data);
+                        chrome.runtime.sendMessage({ type: 'STATUS_UPDATE', message: 'Error: ' + errMsg, status: 'error' });
+                    }
+                })
+                .catch(error => {
+                    chrome.runtime.sendMessage({ type: 'STATUS_UPDATE', message: 'Network Error: ' + error.message, status: 'error' });
+                });
         });
     }
 });
@@ -152,65 +151,65 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     author: "Anonymous Developer"
                 })
             })
-            .then(parseApiResponse)
-            .then(data => {
-                if (data.status === 'success' || data.status === 'partial_success') {
-                    const platforms = data.data?.platforms || [];
-                    const postedPlatforms = platforms
-                        .filter(r => r.status === 'success').map(r => r.platform);
-                    const failedPlatforms = platforms
-                        .filter(r => r.status === 'error').map(r => r.platform);
- 
-                    const entry = {
-                        title: generatedProblemTitle,
-                        date: new Date().toISOString(),
-                        platforms: postedPlatforms,
-                        status: data.status,
-                        author: "Anonymous Developer",
-                        user_email: userEmail,
-                    };
- 
-                    const historyKey = `publishHistory_${userEmail}`;
-                    chrome.storage.local.get({ [historyKey]: [] }, (res) => {
-                        const history = (res[historyKey] || []).filter(h => h.title !== entry.title);
-                        history.unshift(entry);
-                        chrome.storage.local.set({ [historyKey]: history.slice(0, 100) });
-                    });
- 
-                    fetch(`${API_BASE_URL}/dashboard/record`, {
-                        method: "POST",
-                        headers: authHeaders(userEmail, sessionToken),
-                        body: JSON.stringify(entry)
-                    }).catch(() => {});
+                .then(parseApiResponse)
+                .then(data => {
+                    if (data.status === 'success' || data.status === 'partial_success') {
+                        const platforms = data.data?.platforms || [];
+                        const postedPlatforms = platforms
+                            .filter(r => r.status === 'success').map(r => r.platform);
+                        const failedPlatforms = platforms
+                            .filter(r => r.status === 'error').map(r => r.platform);
 
-                    const successMsg = failedPlatforms.length > 0
-                        ? `Posted to ${postedPlatforms.join(', ')}; failed: ${failedPlatforms.join(', ')}`
-                        : postedPlatforms.length > 0
-                            ? `Posted to ${postedPlatforms.join(', ')}`
-                            : 'Posted';
+                        const entry = {
+                            title: generatedProblemTitle,
+                            date: new Date().toISOString(),
+                            platforms: postedPlatforms,
+                            status: data.status,
+                            author: "Anonymous Developer",
+                            user_email: userEmail,
+                        };
 
-                    chrome.runtime.sendMessage({
-                        type: 'STATUS_UPDATE',
-                        message: successMsg,
-                        status: data.status === 'partial_success' ? 'warning' : 'success',
-                        platforms
-                    });
-                    sendResponse({ success: true, message: successMsg, data });
-                } else {
-                    const platformErrors = data.data?.platforms
-                        ?.filter(result => result.status === 'error')
-                        ?.map(result => `${result.platform}: ${result.message}`)
-                        ?.join('; ');
-                    const errMsg = platformErrors || data.message || JSON.stringify(data);
-                    chrome.runtime.sendMessage({ type: 'STATUS_UPDATE', message: 'Error: ' + errMsg, status: 'error' });
+                        const historyKey = `publishHistory_${userEmail}`;
+                        chrome.storage.local.get({ [historyKey]: [] }, (res) => {
+                            const history = (res[historyKey] || []).filter(h => h.title !== entry.title);
+                            history.unshift(entry);
+                            chrome.storage.local.set({ [historyKey]: history.slice(0, 100) });
+                        });
+
+                        fetch(`${API_BASE_URL}/dashboard/record`, {
+                            method: "POST",
+                            headers: authHeaders(userEmail, sessionToken),
+                            body: JSON.stringify(entry)
+                        }).catch(() => { });
+
+                        const successMsg = failedPlatforms.length > 0
+                            ? `Posted to ${postedPlatforms.join(', ')}; failed: ${failedPlatforms.join(', ')}`
+                            : postedPlatforms.length > 0
+                                ? `Posted to ${postedPlatforms.join(', ')}`
+                                : 'Posted';
+
+                        chrome.runtime.sendMessage({
+                            type: 'STATUS_UPDATE',
+                            message: successMsg,
+                            status: data.status === 'partial_success' ? 'warning' : 'success',
+                            platforms
+                        });
+                        sendResponse({ success: true, message: successMsg, data });
+                    } else {
+                        const platformErrors = data.data?.platforms
+                            ?.filter(result => result.status === 'error')
+                            ?.map(result => `${result.platform}: ${result.message}`)
+                            ?.join('; ');
+                        const errMsg = platformErrors || data.message || JSON.stringify(data);
+                        chrome.runtime.sendMessage({ type: 'STATUS_UPDATE', message: 'Error: ' + errMsg, status: 'error' });
+                        sendResponse({ success: false, error: errMsg });
+                    }
+                })
+                .catch(error => {
+                    const errMsg = 'Network Error: ' + error.message;
+                    chrome.runtime.sendMessage({ type: 'STATUS_UPDATE', message: errMsg, status: 'error' });
                     sendResponse({ success: false, error: errMsg });
-                }
-            })
-            .catch(error => {
-                const errMsg = 'Network Error: ' + error.message;
-                chrome.runtime.sendMessage({ type: 'STATUS_UPDATE', message: errMsg, status: 'error' });
-                sendResponse({ success: false, error: errMsg });
-            });
+                });
         });
         return true;
     }
