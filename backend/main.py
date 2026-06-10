@@ -423,7 +423,7 @@ def health_check():
 # Blog Generator Endpoint
 # -----------------------------
 @app.post("/generate-blog")
-@limiter.limit("5/minute")
+@limiter.limit("15/hour")
 async def create_blog(
     request: Request,
     problem: Problem,
