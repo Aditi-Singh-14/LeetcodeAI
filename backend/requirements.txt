@@ -34,4 +34,7 @@ pytest-asyncio
 pytest-mock
 responses
 ruff
+
+slowapi
+tenacity
 tweepy==4.15.0
