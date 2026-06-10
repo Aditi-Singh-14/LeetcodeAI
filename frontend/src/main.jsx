@@ -9,6 +9,12 @@ const TOKEN_KEY = "leetlog_dashboard_token";
 const defaultSettings = {
   linkedin_access_token: "",
   linkedin_person_urn: "",
+  twitter_api_key: "",
+  twitter_api_secret: "",
+  twitter_access_token: "",
+  twitter_access_secret: "",
+  github_access_token: "",
+  github_repo_name: "",
   devto_api_key: "",
   whatsapp_number: "",
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata",
@@ -27,6 +33,12 @@ function normalizeSettings(settings) {
     ...settings,
     linkedin_access_token: settings?.linkedin_access_token || "",
     linkedin_person_urn: settings?.linkedin_person_urn || "",
+    twitter_api_key: settings?.twitter_api_key || "",
+    twitter_api_secret: settings?.twitter_api_secret || "",
+    twitter_access_token: settings?.twitter_access_token || "",
+    twitter_access_secret: settings?.twitter_access_secret || "",
+    github_access_token: settings?.github_access_token || "",
+    github_repo_name: settings?.github_repo_name || "",
     devto_api_key: settings?.devto_api_key || "",
     whatsapp_number: settings?.whatsapp_number || "",
     gemini_api_key: settings?.gemini_api_key || "",
@@ -74,6 +86,8 @@ function App() {
       connected.ai_provider,
       connected.devto,
       connected.linkedin,
+      connected.twitter,
+      connected.github,
       connected.whatsapp
     ];
     return Math.round((checks.filter(Boolean).length / checks.length) * 100);
@@ -131,6 +145,12 @@ function App() {
         ...settings,
         linkedin_access_token: settings.linkedin_access_token || null,
         linkedin_person_urn: settings.linkedin_person_urn || null,
+        twitter_api_key: settings.twitter_api_key || null,
+        twitter_api_secret: settings.twitter_api_secret || null,
+        twitter_access_token: settings.twitter_access_token || null,
+        twitter_access_secret: settings.twitter_access_secret || null,
+        github_access_token: settings.github_access_token || null,
+        github_repo_name: settings.github_repo_name || null,
         devto_api_key: settings.devto_api_key || null,
         whatsapp_number: settings.whatsapp_number || null,
         gemini_api_key: settings.gemini_api_key || null,
@@ -395,6 +415,36 @@ setAnalysisResult(data);
             <label>
               Person URN
               <input value={settings.linkedin_person_urn} onChange={(event) => setSettings({ ...settings, linkedin_person_urn: event.target.value })} placeholder="urn:li:person:123456" />
+            </label>
+          </IntegrationCard>
+
+          <IntegrationCard title="Twitter / X" connected={connected.twitter}>
+            <label>
+              API key
+              <input type="password" value={settings.twitter_api_key} onChange={(event) => setSettings({ ...settings, twitter_api_key: event.target.value })} />
+            </label>
+            <label>
+              API secret
+              <input type="password" value={settings.twitter_api_secret} onChange={(event) => setSettings({ ...settings, twitter_api_secret: event.target.value })} />
+            </label>
+            <label>
+              Access token
+              <input type="password" value={settings.twitter_access_token} onChange={(event) => setSettings({ ...settings, twitter_access_token: event.target.value })} />
+            </label>
+            <label>
+              Access token secret
+              <input type="password" value={settings.twitter_access_secret} onChange={(event) => setSettings({ ...settings, twitter_access_secret: event.target.value })} />
+            </label>
+          </IntegrationCard>
+
+          <IntegrationCard title="GitHub Auto-Publisher" connected={connected.github}>
+            <label>
+              Personal Access Token
+              <input type="password" value={settings.github_access_token} onChange={(event) => setSettings({ ...settings, github_access_token: event.target.value })} />
+            </label>
+            <label>
+              Repository Name
+              <input value={settings.github_repo_name} onChange={(event) => setSettings({ ...settings, github_repo_name: event.target.value })} placeholder="username/leetcode-solutions" />
             </label>
           </IntegrationCard>
 

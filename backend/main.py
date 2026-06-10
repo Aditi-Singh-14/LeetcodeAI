@@ -37,6 +37,7 @@ from models.reminder import PublishRecord
 from services.reminder_scheduler import start_scheduler
 from services.complexity_analyzer import analyze_code
 from social import share_to_platforms
+from github_integration import push_solution_to_github
 
 load_dotenv()
 
@@ -165,6 +166,12 @@ class AuthResponse(BaseModel):
 class IntegrationSettings(BaseModel):
     linkedin_access_token: str | None = None
     linkedin_person_urn: str | None = None
+    twitter_api_key: str | None = None
+    twitter_api_secret: str | None = None
+    twitter_access_token: str | None = None
+    twitter_access_secret: str | None = None
+    github_access_token: str | None = None
+    github_repo_name: str | None = None
     devto_api_key: str | None = None
     whatsapp_number: str | None = None
     timezone: str = "Asia/Kolkata"
@@ -290,6 +297,16 @@ def _connected(settings_doc: dict[str, Any]) -> dict[str, bool]:
         "linkedin": bool(
             settings_doc.get("linkedin_access_token")
             and settings_doc.get("linkedin_person_urn")
+        ),
+        "twitter": bool(
+            settings_doc.get("twitter_api_key")
+            and settings_doc.get("twitter_api_secret")
+            and settings_doc.get("twitter_access_token")
+            and settings_doc.get("twitter_access_secret")
+        ),
+        "github": bool(
+            settings_doc.get("github_access_token")
+            and settings_doc.get("github_repo_name")
         ),
         "whatsapp": bool(settings_doc.get("whatsapp_number")),
         "ai_provider": bool(
@@ -534,6 +551,20 @@ async def create_blog(
                 )
             except Exception as e:
                 print(f"Social sharing failed: {e}")
+
+    # GitHub automatic commit integration
+    if successful and user_settings.get("github_access_token") and user_settings.get("github_repo_name"):
+        try:
+            await run_in_threadpool(
+                push_solution_to_github,
+                problem.title,
+                problem.code,
+                user_settings["github_access_token"],
+                user_settings["github_repo_name"]
+            )
+        except Exception as e:
+            print(f"GitHub push failed: {e}")
+
     return {
         "status": overall_status,
         "data": {
