@@ -55,6 +55,13 @@
                 document.querySelector('.ant-select-selection-item');
             const language = langElement ? langElement.innerText.trim().toLowerCase() : "unknown";
 
+            const difficultyElement = document.querySelector('[diff]') ||
+                document.querySelector('div[class*="text-difficulty-"]') ||
+                document.querySelector('span[class*="text-difficulty-"]');
+            const difficulty = difficultyElement
+                ? (difficultyElement.getAttribute('diff') || difficultyElement.innerText || "").trim()
+                : null;
+
             // Extract the user's LeetCode Username
             let author = "Anonymous LeetCoder";
             const allLinks = document.querySelectorAll('a[href^="/u/"]');

@@ -26,13 +26,13 @@ function escapeHTML(str) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  chrome.storage.local.get({ userEmail: null }, ({ userEmail }) => {
-    if (!userEmail) {
+  chrome.storage.local.get({ userEmail: null, sessionToken: null }, ({ userEmail, sessionToken }) => {
+    if (!userEmail || !sessionToken) {
       showBanner('No email set — open the extension and enter your email first.');
       return;
     }
     setLoading(true);
-    fetchStatsFromBackend(userEmail)
+    fetchStatsFromBackend(userEmail, sessionToken)
       .catch(() => {
         showBanner("Couldn't reach backend — showing local data.");
         return loadFromLocalStorage(userEmail);
@@ -41,9 +41,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-async function fetchStatsFromBackend(email) {
+async function fetchStatsFromBackend(email, sessionToken) {
   const res = await fetch(`${API_BASE_URL}/dashboard/stats`, {
-    headers: { 'X-User-Email': email }
+    headers: {
+      'X-User-Email': email,
+      'Authorization': `Bearer ${sessionToken}`
+    }
   });
   if (!res.ok) throw new Error('Bad response');
   const { total_posts, platform_counts, week_activity, recent } = await res.json();
