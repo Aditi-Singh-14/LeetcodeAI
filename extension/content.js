@@ -66,6 +66,13 @@
                 document.querySelector('.ant-select-selection-item');
             const language = langElement ? langElement.innerText.trim().toLowerCase() : "unknown";
 
+            // Extract topic tags (e.g. Array, Dynamic Programming, Hash Table)
+            const tagElements = document.querySelectorAll('a[href*="/tag/"]');
+            const topics = Array.from(tagElements)
+                .map(el => el.innerText.trim().toLowerCase())
+                .filter(Boolean)
+                .slice(0, 4); // Dev.to allows max 4 tags
+
             // Extract the user's LeetCode Username
             let author = "Anonymous LeetCoder";
             const allLinks = document.querySelectorAll('a[href^="/u/"]');
@@ -90,7 +97,7 @@
             // Send to background script
             chrome.runtime.sendMessage({
                 type: 'GENERATE_BLOG',
-                payload: { title, description, code, author, client_time, custom_prompt, difficulty, language }
+                payload: { title, description, code, author, client_time, custom_prompt, difficulty, language, topics }
             });
 
 
