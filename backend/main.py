@@ -181,6 +181,7 @@ class IntegrationSettings(BaseModel):
     gemini_api_key: str | None = None
     openai_api_key: str | None = None
     perplexity_api_key: str | None = None
+    grok_api_key: str | None = None
     publish_platforms: list[str] = ["devto"]
 
 
@@ -313,6 +314,7 @@ def _connected(settings_doc: dict[str, Any]) -> dict[str, bool]:
             settings_doc.get("gemini_api_key")
             or settings_doc.get("openai_api_key")
             or settings_doc.get("perplexity_api_key")
+            or settings_doc.get("grok_api_key")
         ),
     }
 
@@ -390,7 +392,7 @@ async def update_integration_settings(
     settings: IntegrationSettings,
     current_user: Annotated[dict[str, Any], Depends(get_current_user)],
 ):
-    allowed_providers = {"gemini", "openai", "perplexity"}
+    allowed_providers = {"gemini", "openai", "perplexity", "grok"}
     if settings.ai_provider not in allowed_providers:
         raise HTTPException(status_code=400, detail="Unsupported AI provider.")
 

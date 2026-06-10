@@ -24,6 +24,7 @@ const defaultSettings = {
   gemini_api_key: "",
   openai_api_key: "",
   perplexity_api_key: "",
+  grok_api_key: "",
   publish_platforms: ["devto"]
 };
 
@@ -44,6 +45,7 @@ function normalizeSettings(settings) {
     gemini_api_key: settings?.gemini_api_key || "",
     openai_api_key: settings?.openai_api_key || "",
     perplexity_api_key: settings?.perplexity_api_key || "",
+    grok_api_key: settings?.grok_api_key || "",
     publish_platforms: settings?.publish_platforms?.length ? settings.publish_platforms : ["devto"]
   };
 }
@@ -155,7 +157,8 @@ function App() {
         whatsapp_number: settings.whatsapp_number || null,
         gemini_api_key: settings.gemini_api_key || null,
         openai_api_key: settings.openai_api_key || null,
-        perplexity_api_key: settings.perplexity_api_key || null
+        perplexity_api_key: settings.perplexity_api_key || null,
+        grok_api_key: settings.grok_api_key || null
       };
       const data = await api(
         "/settings/integrations",
@@ -366,6 +369,7 @@ setAnalysisResult(data);
                 <option value="gemini">Gemini</option>
                 <option value="openai">OpenAI</option>
                 <option value="perplexity">Perplexity</option>
+                <option value="grok">Grok</option>
               </select>
             </label>
             <label>
@@ -379,6 +383,10 @@ setAnalysisResult(data);
             <label>
               Perplexity API key
               <input type="password" value={settings.perplexity_api_key} onChange={(event) => setSettings({ ...settings, perplexity_api_key: event.target.value })} />
+            </label>
+            <label>
+              Grok API key
+              <input type="password" value={settings.grok_api_key} onChange={(event) => setSettings({ ...settings, grok_api_key: event.target.value })} />
             </label>
           </IntegrationCard>
 
