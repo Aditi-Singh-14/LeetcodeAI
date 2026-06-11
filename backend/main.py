@@ -461,7 +461,7 @@ def health_check():
 async def create_blog(
     request: Request,
     problem: Problem,
-    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+    current_user: Annotated[dict[str, Any] | None, Depends(get_optional_user)] = None,
     x_user_email: Optional[str] = Header(default=None),
 ):
     """
@@ -469,7 +469,7 @@ async def create_blog(
     generates a blog post using AI, and publishes it dynamically.
     """
     user_email = require_user(x_user_email)
-    user_id = current_user["id"]
+    user_id = current_user["id"] if current_user else "anonymous"
 
     existing_record = await db.problem_info.find_one(
         {"title": problem.title, "author": problem.author, "status": "success"}
@@ -608,14 +608,14 @@ class EditedBlog(BaseModel):
 @app.post("/publish-blog")
 async def publish_blog(
     blog: EditedBlog,
-    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+    current_user: Annotated[dict[str, Any] | None, Depends(get_optional_user)] = None,
     x_user_email: Optional[str] = Header(default=None),
 ):
     """
     Accepts an edited blog post and distributes it using safe user-isolated tokens.
     """
     user_email = require_user(x_user_email)
-    user_id = current_user["id"]
+    user_id = current_user["id"] if current_user else "anonymous"
 
     user_settings = await _settings_for_user(user_id)
     devto_creds = await resolve_user_credentials(db, user_id, "devto")
