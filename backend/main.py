@@ -1,31 +1,28 @@
 import base64
-from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import json
 import logging
 import os
 import secrets
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Optional
 
+import httpx
 import motor.motor_asyncio
 import uvicorn
-import httpx
-
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
-from dotenv import load_dotenv
 from pydantic import BaseModel
+from pymongo.errors import PyMongoError
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from pymongo.errors import PyMongoError
 from twilio.rest import Client
 
 from ai import rate_code_efficiency
@@ -33,22 +30,46 @@ from ai import rate_code_efficiency
 # --- UPDATED AI PATH ---
 from ai_core.blog_generator import generate_blog, generate_tags
 from devto import publish_to_platforms
-from models.reminder import PublishRecord
-from services.reminder_scheduler import start_scheduler
-from services.complexity_analyzer import analyze_code
-from social import share_to_platforms
 from github_integration import push_solution_to_github
+from models.reminder import PublishRecord
+from models.user import PlatformCredential
+from services.complexity_analyzer import analyze_code
+from services.credential_service import resolve_user_credentials
+from services.reminder_scheduler import start_scheduler
+from social import share_to_platforms
+from utils.crypto import encrypt
 
 load_dotenv()
 
 logger = logging.getLogger("leetcodeai")
 
+# -----------------------------
+# MongoDB Setup
+# -----------------------------
+mongo_client = motor.motor_asyncio.AsyncIOMotorClient(os.getenv("MONGODB_URI"))
+db = mongo_client.leetcodeai
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Start background schedulers when server starts.
+    Start background schedulers and initialize MongoDB indexes when server starts.
     """
+    try:
+        # Create indexes to prevent COLLSCAN on dashboard queries
+        await db.problem_info.create_index(
+            [("user_email", 1), ("date", -1)],
+            background=True
+        )
+        await db.users.create_index(
+            [("email", 1)],
+            unique=True,
+            background=True
+        )
+        print("MongoDB indexes ensured successfully.")
+    except Exception as e:
+        logger.error(f"Failed to create MongoDB indexes: {e}")
+
     try:
         start_scheduler()
         print("Reminder scheduler started successfully.")
@@ -95,12 +116,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # -----------------------------
 twilio_client = Client(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
 
-# -----------------------------
-# MongoDB Setup
-# -----------------------------
-mongo_client = motor.motor_asyncio.AsyncIOMotorClient(os.getenv("MONGODB_URI"))
-
-db = mongo_client.leetcodeai
 
 
 # -----------------------------
@@ -446,7 +461,7 @@ def health_check():
 async def create_blog(
     request: Request,
     problem: Problem,
-    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+    current_user: Annotated[dict[str, Any] | None, Depends(get_optional_user)] = None,
     x_user_email: Optional[str] = Header(default=None),
 ):
     """
@@ -454,7 +469,7 @@ async def create_blog(
     generates a blog post using AI, and publishes it dynamically.
     """
     user_email = require_user(x_user_email)
-    user_id = current_user["id"]
+    user_id = current_user["id"] if current_user else "anonymous"
 
     existing_record = await db.problem_info.find_one(
         {"title": problem.title, "author": problem.author, "status": "success"}
@@ -491,14 +506,14 @@ async def create_blog(
     devto_creds = await resolve_user_credentials(db, user_id, "devto")
 
     try:
-        suggested_tags = await run_in_threadpool(
+        _ = await run_in_threadpool(
             generate_tags,
             problem,
             blog_content,
             credentials=user_settings,
         )
     except Exception:
-        suggested_tags = ""
+        pass
 
     try:
         platform_results = await publish_to_platforms(
@@ -593,14 +608,14 @@ class EditedBlog(BaseModel):
 @app.post("/publish-blog")
 async def publish_blog(
     blog: EditedBlog,
-    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+    current_user: Annotated[dict[str, Any] | None, Depends(get_optional_user)] = None,
     x_user_email: Optional[str] = Header(default=None),
 ):
     """
     Accepts an edited blog post and distributes it using safe user-isolated tokens.
     """
     user_email = require_user(x_user_email)
-    user_id = current_user["id"]
+    user_id = current_user["id"] if current_user else "anonymous"
 
     user_settings = await _settings_for_user(user_id)
     devto_creds = await resolve_user_credentials(db, user_id, "devto")
@@ -679,7 +694,7 @@ async def get_dashboard_stats(
         user_email = current_user["email"]
     else:
         user_email = require_user(x_user_email)
-        
+
     user_filter = {"user_email": user_email}
 
     try:
@@ -726,11 +741,11 @@ async def get_dashboard_stats(
         if daily_activity:
             dates_set = {doc["date"] for doc in daily_activity}
             today = datetime.now(timezone.utc).date()
-            
+
             current_date = today
             if current_date.isoformat() not in dates_set:
                 current_date = today - timedelta(days=1)
-                
+
             while current_date.isoformat() in dates_set:
                 current_streak += 1
                 current_date -= timedelta(days=1)
